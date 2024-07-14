@@ -6,10 +6,13 @@
 //! The `NSDictionary` class cluster, including `NSMutableDictionary`.
 
 use super::ns_property_list_serialization::deserialize_plist_from_file;
-use super::{ns_string, ns_url, NSUInteger};
+use super::{ns_array, ns_string, ns_url, NSInteger, NSUInteger};
 use crate::abi::VaList;
-use crate::frameworks::foundation::ns_string::{from_rust_string, to_rust_string};
+use crate::frameworks::foundation::ns_array::from_vec;
+use crate::frameworks::foundation::ns_property_list_serialization::NSPropertyListXMLFormat_v1_0;
+use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::fs::GuestPath;
+use crate::mem::MutPtr;
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
@@ -29,7 +32,7 @@ pub(super) struct DictionaryHostObject {
     /// hash-map, which is not ideally efficient. :)
     /// The keys are the hash values, the values are a list of key-value pairs
     /// where the keys have the same hash value.
-    map: HashMap<Hash, Vec<(id, id)>>,
+    pub(super) map: HashMap<Hash, Vec<(id, id)>>,
     pub(super) count: NSUInteger,
 }
 impl HostObject for DictionaryHostObject {}
@@ -64,12 +67,26 @@ impl DictionaryHostObject {
         for &mut (candidate_key, ref mut existing_value) in collisions.iter_mut() {
             if candidate_key == key || msg![env; candidate_key isEqualTo:key] {
                 release(env, *existing_value);
+                release(env, key);
                 *existing_value = value;
                 return;
             }
         }
         collisions.push((key, value));
         self.count += 1;
+    }
+    pub(super) fn remove(&mut self, env: &mut Environment, key: id) {
+        let hash: Hash = msg![env; key hash];
+        let Some(collisions) = self.map.get_mut(&hash) else {
+            return;
+        };
+        let idx = collisions.iter().position(|&(candidate_key, _)| {
+            candidate_key == key || msg![env; candidate_key isEqualTo:key]
+        }).unwrap();
+        let (existing_key, value) = collisions[idx];
+        release(env, existing_key);
+        release(env, value);
+        collisions.remove(idx);
     }
     pub(super) fn release(&mut self, env: &mut Environment) {
         for collisions in self.map.values() {
@@ -194,6 +211,62 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, this)
 }
 
+- (id)mutableCopy{
+    let ko = dict_to_keys_and_objects(env, this);
+    dict_from_keys_and_objects(env, &ko)
+}
+    
+- (id)allKeys {
+    let keys = env.objc.borrow::<DictionaryHostObject>(this).iter_keys().collect::<Vec<_>>();
+    for key in &keys {
+        retain(env, *key);
+    }
+    let ns_keys = from_vec(env, keys);
+    autorelease(env, ns_keys)
+}
+
+- (id)fileSize {
+    let key = get_static_str(env, "NSFileSize");
+    msg![env; this objectForKey:key]
+}
+
+// FIXME: those are from NSUserDefaults!
+- (())setObject:(id)anObject
+         forKey:(id)key { // NSString*
+    assert!(!anObject.is_null());
+    assert!(anObject != nil);
+    assert!(!key.is_null());
+    assert!(key != nil);
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.insert(env, key, anObject, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+- (())setInteger:(NSInteger)value forKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let value_id: id = msg_class![env; NSNumber numberWithInteger:value];
+    host_obj.insert(env, defaultName, value_id, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+- (())setDouble:(f64)value forKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    // TODO: do not down cast
+    let float: f32 = value as f32;
+    let value_id: id = msg_class![env; NSNumber numberWithFloat:float];
+    host_obj.insert(env, defaultName, value_id, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+- (())setFloat:(f32)value forKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let value_id: id = msg_class![env; NSNumber numberWithFloat:value];
+    host_obj.insert(env, defaultName, value_id, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+- (())removeObjectForKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.remove(env, defaultName);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+    
 // TODO
 
 - (id)valueForKey:(id)key { // NSString*
@@ -220,6 +293,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; _touchHLE_NSMutableDictionary allocWithZone:zone]
 }
 
++ (id)dictionaryWithCapacity:(NSUInteger)cap {
+    let new = msg![env; this alloc];
+    let new = msg![env; new initWithCapacity: cap];
+    autorelease(env, new)
+}
+
 // NSCopying implementation
 - (id)copyWithZone:(NSZonePtr)_zone {
     let entries: Vec<_> =
@@ -227,15 +306,68 @@ pub const CLASSES: ClassExports = objc_classes! {
     dict_from_keys_and_objects(env, &entries)
 }
 
+- (bool)writeToFile:(id)path
+         atomically:(bool)atomic {
+    let data = msg_class![env;
+        NSPropertyListSerialization dataFromPropertyList: this
+                                                  format: NSPropertyListXMLFormat_v1_0
+                                        errorDescription: (MutPtr::<id>::null())
+    ];
+    if data == nil {
+        return false;
+    }
+    msg![env; data writeToFile: path atomically: atomic]
+}
+
 @end
 
+@implementation NSMutableDictionary: NSDictionary
+
++ (id)allocWithZone:(NSZonePtr)zone {
+    // NSDictionary might be subclassed by something which needs allocWithZone:
+    // to have the normal behaviour. Unimplemented: call superclass alloc then.
+    assert!(this == env.objc.get_known_class("NSMutableDictionary", &mut env.mem));
+    msg_class![env; _touchHLE_NSDictionary allocWithZone:zone]
+}
+
++ (id)dictionaryWithCapacity:(NSUInteger)cap {
+    let new = msg![env; this alloc];
+    let new = msg![env; new initWithCapacity: cap];
+    autorelease(env, new)
+}
+
+- (())setValue:(id)value
+       forKey:(id)key {
+    msg![env; this setObject: value forKey: key]
+}
+
+-(())removeAllObjects {
+    let mut objects = std::mem::take(env.objc.borrow_mut::<DictionaryHostObject>(this));
+    objects.release(env);
+}
+
+- (())setInteger:(NSInteger)value forKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let value_id: id = msg_class![env; NSNumber numberWithInteger:value];
+    host_obj.insert(env, defaultName, value_id, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+
+@end
+    
 // Our private subclass that is the single implementation of NSDictionary for
 // the time being.
-@implementation _touchHLE_NSDictionary: NSDictionary
+@implementation _touchHLE_NSDictionary: NSMutableDictionary
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<DictionaryHostObject>::default();
     env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
++ (id)dictionaryWithCapacity:(NSUInteger)cap {
+    let new = msg![env; this alloc];
+    let new = msg![env; new initWithCapacity: cap];
+    autorelease(env, new)
 }
 
 - (())dealloc {
@@ -253,6 +385,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+- (id)initWithCapacity:(NSUInteger)cap {
+    env.objc.borrow_mut::<DictionaryHostObject>(this).map.reserve(cap as usize);
+    this
+}
+
 // TODO: enumeration, more init methods, etc
 
 - (NSUInteger)count {
@@ -265,6 +402,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     res
 }
 
+- (NSInteger)fileSize {
+    let file_size_key = ns_string::get_static_str(env, "fileSize");
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let res = host_obj.lookup(env, file_size_key);
+    *env.objc.borrow_mut(this) = host_obj;
+    msg![env; res intValue]
+}
+
+-(())setObject:(id)value forKey:(id)key {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.insert(env, key, value, true);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+    
 - (id)description {
     // According to docs, this description should be formatted as property list.
     // But by the same docs, it's meant to be used for debugging purposes only.
@@ -290,6 +441,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, desc)
 }
 
+// FIXME: those are from NSUserDefaults!
+- (NSInteger)integerForKey:(id)defaultName {
+    let val: id = msg![env; this objectForKey:defaultName];
+    msg![env; val integerValue]
+}
+- (bool)boolForKey:(id)defaultName {
+    let val: id = msg![env; this objectForKey:defaultName];
+    msg![env; val boolValue]
+}
+
 @end
 
 // Our private subclass that is the single implementation of
@@ -305,6 +466,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     std::mem::take(env.objc.borrow_mut::<DictionaryHostObject>(this)).release(env);
 
     env.objc.dealloc_object(this, &mut env.mem)
+}
+
+- (id)dictionaryRepresentation {
+    this
+}
+- (())synchronize {
+}
+
+- (id)initWithCapacity:(NSUInteger)cap {
+    env.objc.borrow_mut::<DictionaryHostObject>(this).map.reserve(cap as usize);
+    this
 }
 
 - (id)initWithObjectsAndKeys:(id)first_object, ...dots {
@@ -328,6 +500,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     res
 }
 
+- (())setBool:(bool)value
+       forKey:(id)key { // NSString*
+    let num: id = msg_class![env; NSNumber numberWithBool:value];
+    msg![env; this setObject:num forKey:key]
+}
+
 - (())setObject:(id)object
          forKey:(id)key {
     // TODO: raise NSInvalidArgumentException
@@ -339,6 +517,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     *env.objc.borrow_mut(this) = host_obj;
 }
 
+- (())setInteger:(NSInteger)value forKey:(id)defaultName {
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let value_id: id = msg_class![env; NSNumber numberWithInteger:value];
+    host_obj.insert(env, defaultName, value_id, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+
+- (())setValue:(id)value
+        forKey:(id)key { // NSString*
+    assert!(!key.is_null());
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.insert(env, key, value, false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+
+// FIXME: those are from NSUserDefaults!
+- (NSInteger)integerForKey:(id)defaultName {
+    let val: id = msg![env; this objectForKey:defaultName];
+    msg![env; val integerValue]
+}
+
+- (f32)floatForKey:(id)defaultName {
+    let val: id = msg![env; this objectForKey:defaultName];
+    msg![env; val floatValue]
+}
+
+- (bool)boolForKey:(id)defaultName {
+    let val: id = msg![env; this objectForKey:defaultName];
+    msg![env; val boolValue]
+}
+
+- (id)stringForKey:(id)defaultName {
+    msg![env; this objectForKey:defaultName]
+}
+
 @end
 
 };
@@ -348,7 +561,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// with a more intuitive argument order. Unlike [super::ns_array::from_vec],
 /// this **does** copy and retain!
 pub fn dict_from_keys_and_objects(env: &mut Environment, keys_and_objects: &[(id, id)]) -> id {
-    let dict: id = msg_class![env; NSDictionary alloc];
+    let dict: id = msg_class![env; NSMutableDictionary alloc];
 
     let mut host_object = <DictionaryHostObject as Default>::default();
     for &(key, object) in keys_and_objects {
@@ -357,4 +570,15 @@ pub fn dict_from_keys_and_objects(env: &mut Environment, keys_and_objects: &[(id
     *env.objc.borrow_mut(dict) = host_object;
 
     dict
+}
+
+pub fn dict_to_keys_and_objects(env: &mut Environment, dict: id) -> Vec<(id, id)> {
+    let host = env.objc.borrow::<DictionaryHostObject>(dict);
+    let mut ret = Vec::with_capacity(host.count as usize);
+    for collisions in host.map.values() {
+        for &(key, value) in collisions {
+            ret.push((key, value));
+        }
+    }
+    ret
 }
