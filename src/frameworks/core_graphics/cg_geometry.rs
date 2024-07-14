@@ -160,6 +160,36 @@ fn CGRectEqualToRect(_env: &mut Environment, a: CGRect, b: CGRect) -> bool {
     a == b
 }
 
+fn CGRectOffset(_env: &mut Environment, a: CGRect, b: CGRect) -> bool {
+    a == b
+}
+
+fn CGRectGetWidth(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    rect.size.width
+}
+
+fn CGRectGetMidY(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    rect.origin.y + rect.size.height/2.0
+}
+
+fn CGRectGetMinX(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    // is it always true? if yes, why we need this func at all?
+    rect.origin.x
+}
+
+fn CGRectGetMaxX(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    rect.origin.x + rect.size.width
+}
+
+fn CGRectGetMinY(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    // is it always true? if yes, why we need this func at all?
+    rect.origin.y
+}
+
+fn CGRectGetMaxY(_env: &mut Environment, rect: CGRect) -> CGFloat {
+    rect.origin.y + rect.size.height
+}
+
 pub const CGRectZero: CGRect = CGRect {
     origin: CGPointZero,
     size: CGSizeZero,
@@ -176,7 +206,14 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGPointEqualToPoint(_, _)),
     export_c_func!(CGSizeEqualToSize(_, _)),
     export_c_func!(CGRectEqualToRect(_, _)),
+    export_c_func!(CGRectOffset(_, _)),
     export_c_func!(CGRectContainsPoint(_, _)),
+    export_c_func!(CGRectGetWidth(_)),
+    export_c_func!(CGRectGetMidY(_)),
+    export_c_func!(CGRectGetMinX(_)),
+    export_c_func!(CGRectGetMaxX(_)),
+    export_c_func!(CGRectGetMinY(_)),
+    export_c_func!(CGRectGetMaxY(_)),
 ];
 
 pub const CONSTANTS: ConstantExports = &[
@@ -191,5 +228,9 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_CGRectZero",
         HostConstant::Custom(|mem| mem.alloc_and_write(CGRectZero).cast().cast_const()),
+    ),
+    (
+        "_kCLLocationAccuracyKilometer",
+        HostConstant::Custom(|mem| mem.alloc_and_write(0.1f32).cast().cast_const()),
     ),
 ];
