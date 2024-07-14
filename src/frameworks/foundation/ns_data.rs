@@ -16,6 +16,7 @@ use crate::{msg_class, Environment};
 
 struct NSDataHostObject {
     bytes: MutVoidPtr,
+    freeWhenDone: MutVoidPtr,
     length: NSUInteger,
 }
 impl HostObject for NSDataHostObject {}
@@ -30,6 +31,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(NSDataHostObject {
         bytes: Ptr::null(),
+        freeWhenDone: Ptr::null(),
         length: 0,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
@@ -71,6 +73,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 // Calling the standard `init` is also allowed, in which case we just get data
 // of size 0.
 
+- (id)initWithBytesNoCopy:(MutVoidPtr)freeWhenDone
+                   length:(NSUInteger)length {
+    let host_object = env.objc.borrow_mut::<NSDataHostObject>(this);
+    assert!(host_object.freeWhenDone.is_null() && host_object.length == 0);
+    host_object.freeWhenDone = freeWhenDone;
+    host_object.length = length;
+    this
+}
+
 - (id)initWithBytesNoCopy:(MutVoidPtr)bytes
                    length:(NSUInteger)length {
     let host_object = env.objc.borrow_mut::<NSDataHostObject>(this);
@@ -103,7 +114,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)initWithContentsOfFile:(id)path {
     if path == nil {
-        return nil;
+        return nil
     }
     let path = to_rust_string(env, path);
     log_dbg!("[(NSData*){:?} initWithContentsOfFile:{:?}]", this, path);
@@ -120,6 +131,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     host_object.bytes = alloc;
     host_object.length = size;
     this
+}
+
+- (id)initWithContentsOfMappedFile:(id)path {
+    // IMM?: This is ok, right?
+    msg![env; this initWithContentsOfFile:path]
+}
+
+- (bool)writeToFile:(id)path // NSString*
+            options:(NSUInteger)_options_mask
+              error:(MutPtr<id>)error { // NSError**
+    let success: bool = msg![env; this writeToFile:path atomically:true];
+    if !success && !error.is_null() {
+        todo!(); // TODO: create an NSError if requested
+    }
+    success
 }
 
 // FIXME: writes should be atomic
@@ -170,6 +196,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let a = to_rust_slice(env, this).to_owned();
     let b = to_rust_slice(env, other);
     a == b
+}
+
+- (())getBytes:(MutPtr<u8>)buffer length:(NSUInteger)length {
+    let length = length.min(env.objc.borrow::<NSDataHostObject>(this).length);
+    let range = NSRange { location: 0, length };
+    msg![env; this getBytes:buffer range:range]
 }
 
 - (())getBytes:(MutPtr<u8>)buffer range:(NSRange)range {
