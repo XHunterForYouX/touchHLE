@@ -131,6 +131,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; text_label setFont:new_font]
 }
 
+- (())setTag:(bool)tag {
+    log!("TODO: setTag:{}", tag);
+}
+
+- (())setSecureTextEntry:(bool)secure {
+    log!("TODO: setSecureTextEntry:{}", secure);
+}
+
+- (())setEnablesReturnKeyAutomatically:(bool)enables {
+    log!("TODO: setEnablesReturnKeyAutomatically:{}", enables);
+}
+
+- (())setTextAlignment:(bool)text {
+    log!("TODO: setTextAlignment:{}", text);
+}
+
+- (())setPlaceholder:(bool)place {
+    log!("TODO: setPlaceholder:{}", place);
+}
+
 - (())setClearsOnBeginEditing:(bool)clear {
     log!("TODO: setClearsOnBeginEditing:{}", clear);
 }
