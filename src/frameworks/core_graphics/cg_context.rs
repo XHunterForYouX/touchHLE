@@ -91,6 +91,10 @@ fn CGContextSetGrayFillColor(
         .rgb_fill_color = color;
 }
 
+fn CGContextSetBlendMode(env: &mut Environment, context: CGContextRef, blend_mode: i32) {
+
+}
+
 pub fn CGContextFillRect(env: &mut Environment, context: CGContextRef, rect: CGRect) {
     cg_bitmap_context::fill_rect(env, context, rect, /* clear: */ false);
 }
@@ -108,11 +112,17 @@ pub fn CGContextConcatCTM(
     let host_obj = env.objc.borrow_mut::<CGContextHostObject>(context);
     host_obj.transform = transform.concat(host_obj.transform);
 }
+pub fn CGContextGetTextPosition(env: &mut Environment, context: CGContextRef) -> CGAffineTransform {
+    let res = env.objc.borrow::<CGContextHostObject>(context).transform;
+    log_dbg!("CGContextGetTextPosition() => {:?}", res);
+    res
+}
 pub fn CGContextGetCTM(env: &mut Environment, context: CGContextRef) -> CGAffineTransform {
     let res = env.objc.borrow::<CGContextHostObject>(context).transform;
     log_dbg!("CGContextGetCTM() => {:?}", res);
     res
 }
+
 pub fn CGContextRotateCTM(env: &mut Environment, context: CGContextRef, angle: CGFloat) {
     log_dbg!("CGContextRotateCTM({:?})", angle);
     let host_obj = env.objc.borrow_mut::<CGContextHostObject>(context);
@@ -134,6 +144,11 @@ pub fn CGContextTranslateCTM(
     host_obj.transform = host_obj.transform.translate(tx, ty);
 }
 
+pub fn CGContextSetTextDrawingMode(env: &mut Environment, context: CGContextRef) -> CGAffineTransform {
+    let res = env.objc.borrow::<CGContextHostObject>(context).transform;
+    log_dbg!("CGContextSetTextDrawingMode() => {:?}", res);
+    res
+}
 pub fn CGContextDrawImage(
     env: &mut Environment,
     context: CGContextRef,
@@ -162,13 +177,16 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextRelease(_)),
     export_c_func!(CGContextSetRGBFillColor(_, _, _, _, _)),
     export_c_func!(CGContextSetGrayFillColor(_, _, _)),
+    export_c_func!(CGContextSetBlendMode(_, _)),
     export_c_func!(CGContextFillRect(_, _)),
     export_c_func!(CGContextClearRect(_, _)),
     export_c_func!(CGContextConcatCTM(_, _)),
     export_c_func!(CGContextGetCTM(_)),
+    export_c_func!(CGContextGetTextPosition(_)),
     export_c_func!(CGContextRotateCTM(_, _)),
     export_c_func!(CGContextScaleCTM(_, _, _)),
     export_c_func!(CGContextTranslateCTM(_, _, _)),
+    export_c_func!(CGContextSetTextDrawingMode(_)),
     export_c_func!(CGContextDrawImage(_, _, _)),
     export_c_func!(CGContextSaveGState(_)),
     export_c_func!(CGContextRestoreGState(_)),
