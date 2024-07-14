@@ -5,9 +5,10 @@
  */
 //! `math.h`
 
+use std::num::FpCategory;
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::MutPtr;
 use crate::Environment;
+use crate::mem::{MutPtr, MutVoidPtr};
 
 // The sections in this file are organized to match the C standard.
 
@@ -130,6 +131,9 @@ fn log10(_env: &mut Environment, arg: f64) -> f64 {
 fn log10f(_env: &mut Environment, arg: f32) -> f32 {
     arg.log10()
 }
+fn ldexp(_env: &mut Environment, arg: f64) -> f64 {
+    arg.exp()
+}
 fn exp(_env: &mut Environment, arg: f64) -> f64 {
     arg.exp()
 }
@@ -190,6 +194,8 @@ fn trunc(_env: &mut Environment, arg: f64) -> f64 {
 fn truncf(_env: &mut Environment, arg: f32) -> f32 {
     arg.trunc()
 }
+// float
+//      modff(float value, float *iptr)
 fn modff(env: &mut Environment, val: f32, iptr: MutPtr<f32>) -> f32 {
     let ivalue = truncf(env, val);
     env.mem.write(iptr, ivalue);
@@ -207,6 +213,16 @@ fn fmodf(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
 
 // Maximum, minimum and positive difference functions
 // TODO: implement fdim
+fn bind(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn connect(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn div(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+
 fn fmax(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.max(arg2)
 }
@@ -218,6 +234,165 @@ fn fmin(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
 }
 fn fminf(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
     arg1.min(arg2)
+}
+fn gzopen(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn gzread(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn gzclose(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn inflateInit_(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn inflateInit2_(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn inflateEnd(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn mprotect(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn rename(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn setsockopt(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn strcasestr(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn getsockname(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn socket(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn ioctl(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn inet_addr(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn listen(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn putc(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn hypot(env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    sqrt(env, arg1*arg1 + arg2*arg2)
+}
+
+fn lrint(_env: &mut Environment, arg1: f64) -> i64 {
+    arg1.max(i64::MIN as f64).min(i64::MAX as f64).round() as i64
+}
+
+fn lrintf(_env: &mut Environment, arg1: f32) -> i32 {
+    arg1.max(i32::MIN as f32).min(i32::MAX as f32).round() as i32
+}
+
+type GuestFPCategory = i32;
+const FP_NAN: GuestFPCategory = 1;
+const FP_INFINITE: GuestFPCategory = 1;
+const FP_ZERO: GuestFPCategory = 3;
+const FP_NORMAL: GuestFPCategory = 4;
+const FP_SUBNORMAL: GuestFPCategory = 4;
+
+fn __fpclassifyf(_env: &mut Environment, arg: f32) -> GuestFPCategory {
+    match arg.classify() {
+        FpCategory::Nan => FP_NAN,
+        FpCategory::Infinite => FP_INFINITE,
+        FpCategory::Zero => FP_ZERO,
+        FpCategory::Normal => FP_NORMAL,
+        FpCategory::Subnormal => FP_SUBNORMAL
+    }
+}
+
+// int32_t
+//      OSAtomicAdd32Barrier(int32_t theAmount, volatile int32_t *theValue)
+fn OSAtomicAdd32Barrier(
+    env: &mut Environment, the_amount: i32, the_value: MutPtr<i32>
+) -> i32 {
+    let curr = env.mem.read(the_value);
+    let new = curr + the_amount;
+    env.mem.write(the_value, new);
+    new
+}
+
+fn OSAtomicCompareAndSwap32(
+    env: &mut Environment, old_value: i32, new_value: i32, the_value: MutPtr<i32>
+) -> bool {
+    OSAtomicCompareAndSwap32Barrier(env, old_value, new_value, the_value)
+}
+
+fn OSAtomicCompareAndSwapIntBarrier(
+    env: &mut Environment, old_value: i32, new_value: i32, the_value: MutPtr<i32>
+) -> bool {
+    if old_value == env.mem.read(the_value) {
+        env.mem.write(the_value, new_value);
+        true
+    } else {
+        false
+    }
+}
+
+fn OSAtomicCompareAndSwap32Barrier(
+    env: &mut Environment, old_value: i32, new_value: i32, the_value: MutPtr<i32>
+) -> bool {
+    if old_value == env.mem.read(the_value) {
+        env.mem.write(the_value, new_value);
+        true
+    } else {
+        false
+    }
+}
+
+// bool
+//      OSAtomicCompareAndSwapPtr(void* oldValue, void* newValue, void* volatile *theValue);
+fn OSAtomicCompareAndSwapPtr(
+    env: &mut Environment, old_value: MutVoidPtr, new_value: MutVoidPtr, the_value: MutPtr<MutVoidPtr>
+) -> bool {
+    if old_value == env.mem.read(the_value) {
+        env.mem.write(the_value, new_value);
+        true
+    } else {
+        false
+    }
+}
+
+// int32_t	OSAtomicAdd32( int32_t __theAmount, volatile int32_t *__theValue );
+fn OSAtomicAdd32(env: &mut Environment, amount: i32, value_ptr: MutPtr<i32>) -> i32 {
+    let value = env.mem.read(value_ptr);
+    let new_value = value + amount;
+    env.mem.write(value_ptr, new_value);
+    new_value
+}
+
+type OSSpinLock = i32;
+
+// void    OSSpinLockLock( volatile OSSpinLock *__lock );
+fn OSSpinLockLock(env: &mut Environment, lock: MutPtr<OSSpinLock>) {
+    let curr = env.mem.read(lock);
+    assert_eq!(curr, 0);
+    env.mem.write(lock, 1);
+}
+
+fn OSSpinLockUnlock(env: &mut Environment, lock: MutPtr<OSSpinLock>) {
+    let curr = env.mem.read(lock);
+    assert_eq!(curr, 1);
+    env.mem.write(lock, 0);
+}
+
+fn OSMemoryBarrier(env: &mut Environment) {
+
+}
+
+fn fesetround(_env: &mut Environment, round: i32) {
+    // TODO
 }
 
 pub const FUNCTIONS: FunctionExports = &[
@@ -258,6 +433,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(log2f(_)),
     export_c_func!(log10(_)),
     export_c_func!(log10f(_)),
+    export_c_func!(ldexp(_)),
     export_c_func!(exp(_)),
     export_c_func!(expf(_)),
     export_c_func!(expm1(_)),
@@ -283,8 +459,42 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(fmod(_, _)),
     export_c_func!(fmodf(_, _)),
     // Maximum, minimum and positive difference functions
+    export_c_func!(bind(_, _)),
+    export_c_func!(connect(_, _)),
+    export_c_func!(div(_, _)),
     export_c_func!(fmax(_, _)),
     export_c_func!(fmaxf(_, _)),
     export_c_func!(fmin(_, _)),
     export_c_func!(fminf(_, _)),
+    export_c_func!(gzopen(_, _)),
+    export_c_func!(gzread(_, _)),
+    export_c_func!(gzclose(_, _)),
+    export_c_func!(inflateInit_(_, _)),
+    export_c_func!(inflateInit2_(_, _)),
+    export_c_func!(inflateEnd(_, _)),
+    export_c_func!(mprotect(_, _)),
+    export_c_func!(rename(_, _)),
+    export_c_func!(setsockopt(_, _)),
+    export_c_func!(strcasestr(_, _)),
+    export_c_func!(getsockname(_, _)),
+    export_c_func!(socket(_, _)),
+    export_c_func!(ioctl(_, _)),
+    export_c_func!(inet_addr(_, _)),
+    export_c_func!(listen(_, _)),
+    export_c_func!(putc(_, _)),
+    export_c_func!(hypot(_, _)),
+    export_c_func!(lrint(_)),
+    export_c_func!(lrintf(_)),
+    export_c_func!(__fpclassifyf(_)),
+    export_c_func!(fesetround(_)),
+    // Atomic ops (libkern)
+    export_c_func!(OSAtomicCompareAndSwapIntBarrier(_, _, _)),
+    export_c_func!(OSAtomicCompareAndSwap32(_, _, _)),
+    export_c_func!(OSAtomicCompareAndSwap32Barrier(_, _, _)),
+    export_c_func!(OSAtomicCompareAndSwapPtr(_, _, _)),
+    export_c_func!(OSAtomicAdd32Barrier(_, _)),
+    export_c_func!(OSAtomicAdd32(_, _)),
+    export_c_func!(OSSpinLockLock(_)),
+    export_c_func!(OSSpinLockUnlock(_)),
+    export_c_func!(OSMemoryBarrier()),
 ];
