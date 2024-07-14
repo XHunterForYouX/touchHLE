@@ -6,8 +6,8 @@
 //! `UIApplication` and `UIApplicationMain`.
 
 use super::ui_device::*;
-use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
-use crate::frameworks::foundation::{ns_array, ns_string, NSUInteger, NSTimeInterval};
+use crate::dyld::{export_c_func, FunctionExports};
+use crate::frameworks::foundation::{ns_array, ns_string, NSUInteger};
 use crate::frameworks::uikit::ui_nib::load_main_nib_file;
 use crate::mem::MutPtr;
 use crate::objc::{
@@ -49,12 +49,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)sharedApplication {
-    // assert!(env.framework_state.uikit.ui_application.shared_application.is_none());
     env.framework_state.uikit.ui_application.shared_application.unwrap_or(nil)
 }
 
 // This should only be called by UIApplicationMain
 - (id)init {
+    // assert!(env.framework_state.uikit.ui_application.shared_application.is_none());
     env.framework_state.uikit.ui_application.shared_application = Some(this);
     this
 }
@@ -73,20 +73,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     let old_delegate = std::mem::replace(&mut host_object.delegate, delegate);
     if host_object.delegate_is_retained {
         host_object.delegate_is_retained = false;
-        if delegate != old_delegate {
-            release(env, old_delegate);
-        }
+        release(env, old_delegate);
     }
 }
 
-- (UIInterfaceOrientation)statusBarOrientation {
-    match env.window_mut().device_orientation {
-        DeviceOrientation::Portrait => UIDeviceOrientationPortrait,
-        DeviceOrientation::LandscapeLeft => UIDeviceOrientationLandscapeLeft,
-        DeviceOrientation::LandscapeRight => UIDeviceOrientationLandscapeRight,
-    }
-}
-
+// TODO: statusBarHidden getter
 - (())setStatusBarHidden:(bool)hidden {
     env.framework_state.uikit.ui_application.status_bar_hidden = hidden;
 }
@@ -115,13 +106,6 @@ pub const CLASSES: ClassExports = objc_classes! {
                      animated:(bool)_animated {
     // TODO: animation
     msg![env; this setStatusBarOrientation:orientation]
-}
-
-- (NSTimeInterval)statusBarOrientationAnimationDuration {
-    0.0
-}
-- (bool)isStatusBarHidden {
-    true
 }
 
 - (bool)idleTimerDisabled {
@@ -178,10 +162,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     log!("TODO: ignoring registerForRemoteNotificationTypes:{}", types);
 }
 
-- (id)keyWindow {
-    nil
-}
-
 @end
 
 };
@@ -224,7 +204,7 @@ pub(super) fn UIApplicationMain(
             retain(env, delegate);
         } else {
             // We have to construct the delegate.
-            // assert!(delegate_class_name != nil);
+            assert!(delegate_class_name != nil);
             let name = ns_string::to_rust_string(env, delegate_class_name);
             let class = env.objc.get_known_class(&name, &mut env.mem);
             let delegate: id = msg![env; class new];
@@ -329,8 +309,3 @@ pub(super) fn exit(env: &mut Environment) {
 }
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];
-
-pub const CONSTANTS: ConstantExports = &[(
-    "_UIApplicationLaunchOptionsURLKey",
-    HostConstant::NSString("UIApplicationLaunchOptionsURLKey"),
-)];
