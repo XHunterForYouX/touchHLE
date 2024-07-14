@@ -480,6 +480,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(setsockopt(_, _)),
     export_c_func!(strcasestr(_, _)),
     export_c_func!(gethostname(_, _)),
+    export_c_func!(getpagesize(_, _)),
     export_c_func!(getsockname(_, _)),
     export_c_func!(socket(_, _)),
     export_c_func!(ioctl(_, _)),
