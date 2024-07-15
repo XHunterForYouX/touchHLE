@@ -80,7 +80,13 @@ char *getcwd(char *, size_t);
 int usleep(useconds_t);
 
 // <fcntl.h>
+#define O_RDONLY 0x00000000
+#define O_WRONLY 0x00000001
+#define O_RDWR 0x00000002
 #define O_CREAT 0x00000200
+
+int open(const char *, int, ...);
+int close(int);
 
 // <pthread.h>
 typedef struct opaque_pthread_t opaque_pthread_t;
@@ -89,8 +95,33 @@ typedef __pthread_t pthread_t;
 typedef struct opaque_pthread_attr_t opaque_pthread_attr_t;
 typedef struct opaque_pthread_attr_t *__pthread_attr_t;
 typedef __pthread_attr_t pthread_attr_t;
+
+struct _opaque_pthread_mutex_t { long __sig; char __opaque[40]; };
+typedef struct _opaque_pthread_mutex_t __pthread_mutex_t;
+typedef __pthread_mutex_t pthread_mutex_t;
+
+typedef struct opaque_pthread_mutexattr_t opaque_pthread_mutexattr_t;
+typedef struct opaque_pthread_mutexattr_t *__pthread_mutexattr_t;
+typedef __pthread_mutexattr_t pthread_mutexattr_t;
+
+typedef struct opaque_pthread_cond_t opaque_pthread_cond_t;
+typedef struct opaque_pthread_cond_t *__pthread_cond_t;
+typedef __pthread_cond_t pthread_cond_t;
+
+typedef struct opaque_pthread_condattr_t opaque_pthread_condattr_t;
+typedef struct opaque_pthread_condattr_t *__pthread_condattr_t;
+typedef __pthread_condattr_t pthread_condattr_t;
+
 int pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *),
                    void *);
+
+int pthread_cond_init(pthread_cond_t *, const pthread_condattr_t *);
+int pthread_cond_signal(pthread_cond_t *);
+int pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
+
+int pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *);
+int pthread_mutex_lock(pthread_mutex_t *);
+int pthread_mutex_unlock(pthread_mutex_t *);
 
 // <semaphore.h>
 #define SEM_FAILED ((sem_t *)-1)
@@ -101,6 +132,18 @@ int sem_post(sem_t *);
 int sem_trywait(sem_t *);
 int sem_unlink(const char *);
 int sem_wait(sem_t *);
+
+#ifdef DEFINE_ME_WHEN_BUILDING_ON_MACOS
+typedef long _register_t; // 64-bit definition
+#else
+typedef int _register_t;
+#endif
+
+// <setjmp.h>
+#define _JBLEN (10 + 16 + 2)
+typedef _register_t jmp_buf[_JBLEN];
+int setjmp(jmp_buf env);
+void longjmp(jmp_buf env, int val);
 
 // <locale.h>
 #define LC_ALL 0
@@ -612,6 +655,42 @@ int test_sem() {
     return -1;
   }
 
+int done = 0;
+pthread_mutex_t m;
+pthread_cond_t c;
+
+void thr_exit() {
+  pthread_mutex_lock(&m);
+  done = 1;
+  pthread_cond_signal(&c);
+  pthread_mutex_unlock(&m);
+}
+
+void *child(void *arg) {
+  thr_exit();
+  return NULL;
+}
+
+void thr_join() {
+  pthread_mutex_lock(&m);
+  while (done == 0) {
+    pthread_cond_wait(&c, &m);
+  }
+  pthread_mutex_unlock(&m);
+}
+
+int test_cond_var() {
+  pthread_t p;
+
+  pthread_mutex_init(&m, NULL);
+  pthread_cond_init(&c, NULL);
+
+  pthread_create(&p, NULL, child, NULL);
+  thr_join();
+
+  return done == 1 ? 0 : -1;
+}
+  
   // Check that reopen is fine
   semaphore = sem_open("sem_test", O_CREAT, 0644, 1);
   if (semaphore == SEM_FAILED) {
@@ -698,6 +777,24 @@ int test_strncat() {
   }
 
   return 0;
+}
+
+void jmpfunction(jmp_buf env_buf) { longjmp(env_buf, 432); }
+
+int test_setjmp() {
+  int val;
+  jmp_buf env_buffer;
+
+  /* save calling environment for longjmp */
+  val = setjmp(env_buffer);
+
+  if (val != 0) {
+    return val == 432 ? 0 : -2;
+  }
+
+  jmpfunction(env_buffer);
+
+  return -1;
 }
 
 int test_strlcpy() {
@@ -931,6 +1028,30 @@ int test_CFMutableString() {
   return 0;
 }
 
+int test_open() {
+  int fd;
+  // Test opening directories
+  fd = open("/usr", O_RDONLY);
+  if (fd == -1) {
+    return -1;
+  }
+  close(fd);
+
+  fd = open("/usr", O_WRONLY);
+  if (fd != -1) {
+    close(fd);
+    return -2;
+  }
+
+  fd = open("/usr", O_RDWR);
+  if (fd != -1) {
+    close(fd);
+    return -3;
+  }
+
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -948,9 +1069,11 @@ struct {
     FUNC_DEF(test_strtof),
     FUNC_DEF(test_getcwd_chdir),
     FUNC_DEF(test_sem),
+    FUNC_DEF(test_cond_var),
     FUNC_DEF(test_CGAffineTransform),
     FUNC_DEF(test_strncpy),
     FUNC_DEF(test_strncat),
+    FUNC_DEF(test_setjmp),
     FUNC_DEF(test_strlcpy),
     FUNC_DEF(test_setlocale),
     FUNC_DEF(test_strtoul),
@@ -962,6 +1085,7 @@ struct {
     FUNC_DEF(test_strcspn),
     FUNC_DEF(test_mbstowcs),
     FUNC_DEF(test_CFMutableString),
+    FUNC_DEF(test_open),
 };
 // clang-format on
 
