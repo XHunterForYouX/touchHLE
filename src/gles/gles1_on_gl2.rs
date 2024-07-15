@@ -70,6 +70,10 @@ pub const CAPABILITIES: &[GLenum] = &[
     gl21::POINT_SPRITE,
 ];
 
+pub const UNSUPPORTED_CAPABILITIES: &[GLenum] = &[
+    0x8620, // GL_VERTEX_PROGRAM_NV
+];
+
 pub struct ArrayInfo {
     /// Enum used by `glEnableClientState`, `glDisableClientState` and
     /// `glGetBoolean`.
@@ -310,6 +314,11 @@ const LIGHT_PARAMS: ParamTable = ParamTable(&[
     (gl21::CONSTANT_ATTENUATION, ParamType::Float, 1),
     (gl21::LINEAR_ATTENUATION, ParamType::Float, 1),
     (gl21::QUADRATIC_ATTENUATION, ParamType::Float, 1),
+]);
+
+const LIGHT_MODEL_PARAMS: ParamTable = ParamTable(&[
+    (gl21::LIGHT_MODEL_AMBIENT, ParamType::Float, 4),
+    (gl21::LIGHT_MODEL_TWO_SIDE, ParamType::Float, 1),
 ]);
 
 /// Table of `glMaterial` parameters shared by OpenGL ES 1.1 and OpenGL 2.1.
@@ -595,6 +604,8 @@ impl GLES for GLES1OnGL2 {
     unsafe fn Disable(&mut self, cap: GLenum) {
         if ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == cap) {
             log_dbg!("Tolerating glDisable({:#x}) of client state", cap);
+        } else if UNSUPPORTED_CAPABILITIES.contains(&cap) {
+            log_dbg!("Tolerating glDisable({:#x}) of unsupported capability", cap);
         } else {
             assert!(CAPABILITIES.contains(&cap));
         }
@@ -659,6 +670,9 @@ impl GLES for GLES1OnGL2 {
     }
     unsafe fn Flush(&mut self) {
         gl21::Flush();
+    }
+    unsafe fn Finish(&mut self) {
+        gl21::Finish();
     }
     unsafe fn GetString(&mut self, name: GLenum) -> *const GLubyte {
         gl21::GetString(name)
@@ -807,7 +821,14 @@ impl GLES for GLES1OnGL2 {
             params,
         );
     }
-
+    unsafe fn ClipPlanef(&mut self, pname: GLenum, params: *const GLfloat) {
+        let mut params_double: [f64; 4] = [0.0; 4];
+        for i in 0..4 {
+            params_double[i] = *params.wrapping_add(i) as f64;
+        }
+        gl21::ClipPlane(pname, &params_double as _);
+    }
+    
     // Lighting and materials
     unsafe fn Fogf(&mut self, pname: GLenum, param: GLfloat) {
         FOG_PARAMS.assert_component_count(pname, 1);
@@ -858,10 +879,28 @@ impl GLES for GLES1OnGL2 {
         )
     }
     unsafe fn LightModelf(&mut self, pname: GLenum, param: GLfloat) {
+        LIGHT_MODEL_PARAMS.assert_component_count(pname, 1);
         gl21::LightModelf(pname, param)
     }
+    unsafe fn LightModelx(&mut self, pname: GLenum, param: GLfixed) {
+        LIGHT_MODEL_PARAMS.setx(
+            |param| gl21::LightModelf(pname, param),
+            |_| unreachable!(),
+            pname,
+            param,
+        )
+    }
     unsafe fn LightModelfv(&mut self, pname: GLenum, params: *const GLfloat) {
+        LIGHT_MODEL_PARAMS.assert_known_param(pname);
         gl21::LightModelfv(pname, params)
+    }
+    unsafe fn LightModelxv(&mut self, pname: GLenum, params: *const GLfixed) {
+        LIGHT_MODEL_PARAMS.setxv(
+            |param| gl21::LightModelfv(pname, param),
+            |_| unreachable!(),
+            pname,
+            params,
+        )
     }
     unsafe fn Materialf(&mut self, face: GLenum, pname: GLenum, param: GLfloat) {
         assert!(face == gl21::FRONT_AND_BACK);
@@ -893,6 +932,9 @@ impl GLES for GLES1OnGL2 {
     }
 
     // Buffers
+    unsafe fn GenRenderbuffers(&mut self, n: GLsizei, buffers: *mut GLuint) {
+        gl21::GenRenderbuffersEXT(n, buffers)
+    }
     unsafe fn GenBuffers(&mut self, n: GLsizei, buffers: *mut GLuint) {
         gl21::GenBuffers(n, buffers)
     }
@@ -902,6 +944,10 @@ impl GLES for GLES1OnGL2 {
     unsafe fn BindBuffer(&mut self, target: GLenum, buffer: GLuint) {
         assert!(target == gl21::ARRAY_BUFFER || target == gl21::ELEMENT_ARRAY_BUFFER);
         gl21::BindBuffer(target, buffer)
+    }
+    unsafe fn BindRenderbuffer(&mut self, target: GLenum, buffer: GLuint) {
+        assert!(target == gl21::ARRAY_BUFFER || target == gl21::ELEMENT_ARRAY_BUFFER);
+        gl21::BindRenderbufferEXT(target, buffer)
     }
     unsafe fn BufferData(
         &mut self,
@@ -1163,6 +1209,14 @@ impl GLES for GLES1OnGL2 {
     }
     unsafe fn ClearStencil(&mut self, s: GLint) {
         gl21::ClearStencil(s)
+    }
+
+    unsafe fn LogicOp(&mut self, opcode: GLenum) {
+        gl21::LogicOp(opcode);
+    }
+
+    unsafe fn StencilFunc(&mut self, func: GLenum, ref_: GLint, mask: GLuint) {
+        gl21::StencilFunc(func, ref_, mask);
     }
 
     // Textures
@@ -1760,5 +1814,14 @@ impl GLES for GLES1OnGL2 {
     }
     unsafe fn GenerateMipmapOES(&mut self, target: GLenum) {
         gl21::GenerateMipmapEXT(target)
+    }
+    unsafe fn GetBufferParameteriv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint) {
+        gl21::GetBufferParameteriv(target, pname, params)
+    }
+    unsafe fn MapBufferOES(&mut self, target: GLenum, access: GLenum) -> *mut GLvoid {
+        gl21::MapBuffer(target, access)
+    }
+    unsafe fn UnmapBufferOES(&mut self, target: GLenum) -> GLboolean {
+        gl21::UnmapBuffer(target)
     }
 }
