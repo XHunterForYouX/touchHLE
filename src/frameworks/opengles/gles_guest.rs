@@ -12,11 +12,17 @@
 //! depending on the value of `pname`, using the upper bound (4 in this case)
 //! every time is never going to cause a problem in practice.
 
+use touchHLE_gl_bindings::gles11::WRITE_ONLY_OES;
+
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::gles::gles11_raw as gles11; // constants only
 use crate::gles::GLES;
 use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, Ptr};
+use crate::objc::nil;
 use crate::Environment;
+
+use std::ffi::c_void;
+use std::slice::from_raw_parts;
 
 // These types are the same size in guest code (32-bit) and host code (64-bit).
 use crate::gles::gles11_raw::types::{
@@ -28,24 +34,28 @@ use crate::gles::gles11_raw::types::{GLintptr as HostGLintptr, GLsizeiptr as Hos
 type GuestGLsizeiptr = GuestISize;
 type GuestGLintptr = GuestISize;
 
-fn with_ctx_and_mem<T, U>(env: &mut Environment, f: T) -> U
+fn with_ctx_and_mem<T: Copy, U>(env: &mut Environment, f: T) -> U
 where
     T: FnOnce(&mut dyn GLES, &mut Mem) -> U,
 {
-    let gles = super::sync_context(
+    let mut res: Option<U> = None;
+    super::sync_context(
         &mut env.framework_state.opengles,
         &mut env.objc,
         env.window
             .as_mut()
             .expect("OpenGL ES is not supported in headless mode"),
         env.current_thread,
+        |gles, _, _| {
+            res = Some(f(gles, &mut env.mem));
+        }
     );
 
     //panic_on_gl_errors(&mut **gles);
-    let res = f(gles, &mut env.mem);
+    //let
     //panic_on_gl_errors(&mut **gles);
-    #[allow(clippy::let_and_return)]
-    res
+    //#[allow(clippy::let_and_return)]
+    res.unwrap()
 }
 
 /// Useful for debugging
@@ -148,6 +158,9 @@ fn glHint(env: &mut Environment, target: GLenum, mode: GLenum) {
 }
 fn glFlush(env: &mut Environment) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Flush() })
+}
+fn glFinish(env: &mut Environment) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Finish() })
 }
 fn glGetString(env: &mut Environment, name: GLenum) -> ConstPtr<GLubyte> {
     let res = if let Some(&str) = env.framework_state.opengles.strings_cache.get(&name) {
@@ -292,6 +305,13 @@ fn glPointParameterxv(env: &mut Environment, pname: GLenum, params: ConstPtr<GLf
     })
 }
 
+fn glClipPlanef(env: &mut Environment, pname: GLenum, params: ConstPtr<GLfloat>) {
+    with_ctx_and_mem(env, |gles, mem| {
+        let params = mem.ptr_at(params, 4 /* upper bound */);
+        unsafe { gles.ClipPlanef(pname, params) }
+    })
+}
+
 // Lighting and materials
 fn glFogf(env: &mut Environment, pname: GLenum, param: GLfloat) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Fogf(pname, param) })
@@ -336,10 +356,19 @@ fn glLightxv(env: &mut Environment, light: GLenum, pname: GLenum, params: ConstP
 fn glLightModelf(env: &mut Environment, pname: GLenum, param: GLfloat) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.LightModelf(pname, param) })
 }
+fn glLightModelx(env: &mut Environment, pname: GLenum, param: GLfixed) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.LightModelx(pname, param) })
+}
 fn glLightModelfv(env: &mut Environment, pname: GLenum, params: ConstPtr<GLfloat>) {
     with_ctx_and_mem(env, |gles, mem| {
         let params = mem.ptr_at(params, 4 /* upper bound */);
         unsafe { gles.LightModelfv(pname, params) }
+    })
+}
+fn glLightModelxv(env: &mut Environment, pname: GLenum, params: ConstPtr<GLfixed>) {
+    with_ctx_and_mem(env, |gles, mem| {
+        let params = mem.ptr_at(params, 4 /* upper bound */);
+        unsafe { gles.LightModelxv(pname, params) }
     })
 }
 fn glMaterialf(env: &mut Environment, face: GLenum, pname: GLenum, param: GLfloat) {
@@ -366,6 +395,13 @@ fn glMaterialxv(env: &mut Environment, face: GLenum, pname: GLenum, params: Cons
 }
 
 // Textures
+fn glGenRenderbuffers(env: &mut Environment, n: GLsizei, buffers: MutPtr<GLuint>) {
+    with_ctx_and_mem(env, |gles, mem| {
+        let n_usize: GuestUSize = n.try_into().unwrap();
+        let buffers = mem.ptr_at_mut(buffers, n_usize);
+        unsafe { gles.GenRenderbuffers(n, buffers) }
+    })
+}
 fn glGenBuffers(env: &mut Environment, n: GLsizei, buffers: MutPtr<GLuint>) {
     with_ctx_and_mem(env, |gles, mem| {
         let n_usize: GuestUSize = n.try_into().unwrap();
@@ -382,6 +418,9 @@ fn glDeleteBuffers(env: &mut Environment, n: GLsizei, buffers: ConstPtr<GLuint>)
 }
 fn glBindBuffer(env: &mut Environment, target: GLenum, buffer: GLuint) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.BindBuffer(target, buffer) })
+}
+fn glBindRenderbuffer(env: &mut Environment, target: GLenum, buffer: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.BindRenderbuffer(target, buffer) })
 }
 fn glBufferData(
     env: &mut Environment,
@@ -607,6 +646,14 @@ fn glClearDepthx(env: &mut Environment, depth: GLclampx) {
 }
 fn glClearStencil(env: &mut Environment, s: GLint) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.ClearStencil(s) });
+}
+
+fn glLogicOp(env: &mut Environment, opcode: GLenum) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.LogicOp(opcode) });
+}
+
+fn glStencilFunc(env: &mut Environment, func: GLenum, ref_: GLint, mask: GLuint) {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.StencilFunc(func, ref_, mask) });
 }
 
 // Matrix stack operations
@@ -1117,6 +1164,83 @@ fn glGenerateMipmapOES(env: &mut Environment, target: GLenum) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.GenerateMipmapOES(target) })
 }
 
+fn glGetBufferParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    let params = env.mem.ptr_at_mut(params, 1);
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.GetBufferParameteriv(target, pname, params)
+    })
+}
+fn glMapBufferOES(env: &mut Environment, target: GLenum, access: GLenum) -> MutPtr<GLvoid> {
+    //  "glMapBuffer maps to the client's address space the entire data store
+    //  of the buffer object currently bound to target. The data can then be
+    //  directly read and/or written relative to the returned pointer,
+    //  depending on the specified access policy."
+    // https://docs.gl/gl2/glMapBuffer
+    //
+    // We have to make an address space in the guest and "forward" those
+    // reads/writes to the address space in the host, which is mapped to the
+    // target buffer.
+    // Since the mapped buffer can't be used until it's unmapped, we defer the
+    // "forwarding" of read/writes until the moment the buffer is unmapped.
+    assert!(access == WRITE_ONLY_OES);
+    assert!(!env
+        .framework_state
+        .opengles
+        .mapped_buffers
+        .contains_key(&target));
+    let host_buffer = with_ctx_and_mem(env, |gles, _mem| unsafe {
+        gles.MapBufferOES(target, access)
+    });
+    if host_buffer.is_null() {
+        nil.cast()
+    } else {
+        let buffer_size = _get_buffer_size(env, target) as u32;
+        let guest_buffer: MutPtr<c_void> = env.mem.alloc(buffer_size).cast();
+        // Copy host buffer to guest buffer
+        unsafe {
+            env.mem
+                .bytes_at_mut(guest_buffer.cast(), buffer_size)
+                .copy_from_slice(from_raw_parts(host_buffer as *mut u8, buffer_size as usize));
+        }
+        env.framework_state
+            .opengles
+            .mapped_buffers
+            .insert(target, (guest_buffer, host_buffer));
+        guest_buffer
+    }
+}
+fn glUnmapBufferOES(env: &mut Environment, target: GLenum) -> GLboolean {
+    //  "A mapped data store must be unmapped with glUnmapBuffer before its
+    //  buffer object is used. Otherwise an error will be generated by any GL
+    //  command that attempts to dereference the buffer object's data store.
+    //  When a data store is unmapped, the pointer to its data store becomes
+    //  invalid."
+    // https://docs.gl/gl2/glMapBuffer
+    //
+    // Since the mapped buffer can't be used until it's unmapped, we defer the
+    // "forwarding" of read/writes until the moment the buffer is unmapped.
+    // The guest buffer is deallocated here
+    let buffer_size = _get_buffer_size(env, target) as u32;
+    if let Some((guest_buffer, host_buffer)) =
+        env.framework_state.opengles.mapped_buffers.remove(&target)
+    {
+        // Copy guest buffer to host buffer
+        unsafe {
+            host_buffer.copy_from(
+                env.mem.bytes_at(guest_buffer.cast(), buffer_size).as_ptr() as *mut c_void,
+                buffer_size as usize,
+            );
+        }
+        env.mem.free(guest_buffer);
+    }
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.UnmapBufferOES(target) })
+}
+
 /// If fog is enabled, check if the values for start and end distances
 /// are equal. Apple platforms (even modern Mac OS) seem to handle that
 /// gracefully, however, both Windows and Android have issues in those cases.
@@ -1162,6 +1286,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glGetTexEnviv(_, _, _)),
     export_c_func!(glHint(_, _)),
     export_c_func!(glFlush()),
+    export_c_func!(glFinish()),
     export_c_func!(glGetString(_)),
     // Other state manipulation
     export_c_func!(glAlphaFunc(_, _)),
@@ -1188,6 +1313,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glPointParameterx(_, _)),
     export_c_func!(glPointParameterfv(_, _)),
     export_c_func!(glPointParameterxv(_, _)),
+    export_c_func!(glClipPlanef(_, _)),
     // Lighting and materials
     export_c_func!(glFogf(_, _)),
     export_c_func!(glFogx(_, _)),
@@ -1199,14 +1325,18 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glLightxv(_, _, _)),
     export_c_func!(glLightModelf(_, _)),
     export_c_func!(glLightModelfv(_, _)),
+    export_c_func!(glLightModelx(_, _)),
+    export_c_func!(glLightModelxv(_, _)),
     export_c_func!(glMaterialf(_, _, _)),
     export_c_func!(glMaterialx(_, _, _)),
     export_c_func!(glMaterialfv(_, _, _)),
     export_c_func!(glMaterialxv(_, _, _)),
     // Buffers
+    export_c_func!(glGenRenderbuffers(_, _)),
     export_c_func!(glGenBuffers(_, _)),
     export_c_func!(glDeleteBuffers(_, _)),
     export_c_func!(glBindBuffer(_, _)),
+    export_c_func!(glBindRenderbuffer(_, _)),
     export_c_func!(glBufferData(_, _, _, _)),
     export_c_func!(glBufferSubData(_, _, _, _)),
     // Non-pointers
@@ -1230,6 +1360,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glClearDepthf(_)),
     export_c_func!(glClearDepthx(_)),
     export_c_func!(glClearStencil(_)),
+    export_c_func!(glLogicOp(_)),
+    export_c_func!(glStencilFunc(_, _, _)),
     // Matrix stack operations
     export_c_func!(glMatrixMode(_)),
     export_c_func!(glLoadIdentity()),
@@ -1287,4 +1419,15 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glDeleteFramebuffersOES(_, _)),
     export_c_func!(glDeleteRenderbuffersOES(_, _)),
     export_c_func!(glGenerateMipmapOES(_)),
+    export_c_func!(glGetBufferParameteriv(_, _, _)),
+    export_c_func!(glMapBufferOES(_, _)),
+    export_c_func!(glUnmapBufferOES(_)),
 ];
+
+fn _get_buffer_size(env: &mut Environment, target: GLenum) -> GLint {
+    with_ctx_and_mem(env, |gles, _mem| {
+        let mut buffer_size: GLint = 0;
+        unsafe { gles.GetBufferParameteriv(target, gles11::BUFFER_SIZE, &mut buffer_size) }
+        buffer_size
+    })
+}
