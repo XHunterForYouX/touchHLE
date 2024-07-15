@@ -12,9 +12,12 @@
 pub mod eagl;
 mod gles_guest;
 
-use crate::mem::ConstPtr;
+use std::ops::DerefMut;
+use std::ffi::c_void;
+
+use crate::mem::{ConstPtr, MutPtr};
 pub use gles_guest::FUNCTIONS;
-use touchHLE_gl_bindings::gles11::types::GLenum;
+use touchHLE_gl_bindings::gles11::types::{GLenum, GLvoid};
 
 #[derive(Default)]
 pub struct State {
@@ -23,6 +26,7 @@ pub struct State {
     /// Which thread's EAGLContext is currently active
     current_ctx_thread: Option<crate::ThreadId>,
     strings_cache: std::collections::HashMap<GLenum, ConstPtr<u8>>,
+    mapped_buffers: std::collections::HashMap<GLenum, (MutPtr<GLvoid>, *mut c_void)>,
 }
 impl State {
     fn current_ctx_for_thread(&mut self, thread: crate::ThreadId) -> &mut Option<crate::objc::id> {
@@ -31,24 +35,28 @@ impl State {
     }
 }
 
-fn sync_context<'a>(
+fn sync_context<'a, F>(
     state: &mut State,
     objc: &'a mut crate::objc::ObjC,
     window: &mut crate::window::Window,
     current_thread: crate::ThreadId,
-) -> &'a mut dyn crate::gles::GLES {
+    mut action: F,
+) where
+    F: FnMut(&mut dyn crate::gles::GLES, &'a mut crate::objc::ObjC, &mut crate::window::Window),
+{
     let current_ctx = state.current_ctx_for_thread(current_thread);
     let host_obj = objc.borrow_mut::<eagl::EAGLContextHostObject>(current_ctx.unwrap());
-    let gles_ctx = host_obj.gles_ctx.as_deref_mut().unwrap();
+    let gles_ctx_rc = host_obj.gles_ctx.clone().unwrap();
+    let mut gles_ctx_refcell = gles_ctx_rc.borrow_mut();
+    let gles_ctx: &mut dyn crate::gles::GLES = &mut **gles_ctx_refcell;
 
-    if window.is_app_gl_ctx_no_longer_current() || state.current_ctx_thread != Some(current_thread)
-    {
+    if window.is_app_gl_ctx_no_longer_current() || state.current_ctx_thread != Some(current_thread) {
         log_dbg!(
-            "Restoring guest app OpenGL context for thread {}.",
-            current_thread
-        );
+                "Restoring guest app OpenGL context for thread {}.",
+                current_thread
+            );
         gles_ctx.make_current(window);
     }
 
-    gles_ctx
+    action(gles_ctx, objc, window);
 }
