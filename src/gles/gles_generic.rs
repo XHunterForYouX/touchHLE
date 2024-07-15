@@ -54,6 +54,7 @@ pub trait GLES {
     unsafe fn GetPointerv(&mut self, pname: GLenum, params: *mut *const GLvoid);
     unsafe fn Hint(&mut self, target: GLenum, mode: GLenum);
     unsafe fn Flush(&mut self);
+    unsafe fn Finish(&mut self);
     #[allow(dead_code)]
     unsafe fn GetString(&mut self, name: GLenum) -> *const GLubyte;
 
@@ -90,6 +91,9 @@ pub trait GLES {
     unsafe fn PointParameterfv(&mut self, pname: GLenum, params: *const GLfloat);
     unsafe fn PointParameterxv(&mut self, pname: GLenum, params: *const GLfixed);
 
+    // Clipping
+    unsafe fn ClipPlanef(&mut self, pname: GLenum, params: *const GLfloat);
+   
     // Lighting and materials
     unsafe fn Fogf(&mut self, pname: GLenum, param: GLfloat);
     unsafe fn Fogx(&mut self, pname: GLenum, param: GLfixed);
@@ -100,16 +104,20 @@ pub trait GLES {
     unsafe fn Lightfv(&mut self, light: GLenum, pname: GLenum, params: *const GLfloat);
     unsafe fn Lightxv(&mut self, light: GLenum, pname: GLenum, params: *const GLfixed);
     unsafe fn LightModelf(&mut self, pname: GLenum, param: GLfloat);
+    unsafe fn LightModelx(&mut self, pname: GLenum, param: GLfixed);
     unsafe fn LightModelfv(&mut self, pname: GLenum, params: *const GLfloat);
+    unsafe fn LightModelxv(&mut self, pname: GLenum, params: *const GLfixed);
     unsafe fn Materialf(&mut self, face: GLenum, pname: GLenum, param: GLfloat);
     unsafe fn Materialx(&mut self, face: GLenum, pname: GLenum, param: GLfixed);
     unsafe fn Materialfv(&mut self, face: GLenum, pname: GLenum, params: *const GLfloat);
     unsafe fn Materialxv(&mut self, face: GLenum, pname: GLenum, params: *const GLfixed);
 
     // Buffers
+    unsafe fn GenRenderbuffers(&mut self, n: GLsizei, buffers: *mut GLuint);
     unsafe fn GenBuffers(&mut self, n: GLsizei, buffers: *mut GLuint);
     unsafe fn DeleteBuffers(&mut self, n: GLsizei, buffers: *const GLuint);
     unsafe fn BindBuffer(&mut self, target: GLenum, buffer: GLuint);
+    unsafe fn BindRenderbuffer(&mut self, target: GLenum, buffer: GLuint);
     unsafe fn BufferData(
         &mut self,
         target: GLenum,
@@ -185,6 +193,8 @@ pub trait GLES {
     unsafe fn ClearDepthf(&mut self, depth: GLclampf);
     unsafe fn ClearDepthx(&mut self, depth: GLclampx);
     unsafe fn ClearStencil(&mut self, s: GLint);
+    unsafe fn LogicOp(&mut self, opcode: GLenum);
+    unsafe fn StencilFunc(&mut self, func: GLenum, ref_: GLint, mask: GLuint);
 
     // Textures
     unsafe fn PixelStorei(&mut self, pname: GLenum, param: GLint);
@@ -369,4 +379,7 @@ pub trait GLES {
     unsafe fn DeleteFramebuffersOES(&mut self, n: GLsizei, framebuffers: *const GLuint);
     unsafe fn DeleteRenderbuffersOES(&mut self, n: GLsizei, renderbuffers: *const GLuint);
     unsafe fn GenerateMipmapOES(&mut self, target: GLenum);
+    unsafe fn GetBufferParameteriv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint);
+    unsafe fn MapBufferOES(&mut self, target: GLenum, access: GLenum) -> *mut GLvoid;
+    unsafe fn UnmapBufferOES(&mut self, target: GLenum) -> GLboolean;
 }
