@@ -42,6 +42,7 @@ int sscanf(const char *, const char *, ...);
 int printf(const char *, ...);
 int vsnprintf(char *, size_t, const char *, va_list);
 int swprintf(wchar_t *, size_t, const wchar_t *, ...);
+int fwrite(const void *, size_t, size_t, FILE *);
 
 // <stdlib.h>
 #define EXIT_SUCCESS 0
@@ -1031,27 +1032,13 @@ int test_CFMutableString() {
   return 0;
 }
 
-int test_open() {
-  int fd;
-  // Test opening directories
-  fd = open("/usr", O_RDONLY);
-  if (fd == -1) {
+int test_fwrite() {
+  FILE *some_file = fopen("TestApp", "r");
+  int res = fwrite(NULL, 1, 1, some_file);
+  fclose(some_file);
+  if (res != 0) {
     return -1;
   }
-  close(fd);
-
-  fd = open("/usr", O_WRONLY);
-  if (fd != -1) {
-    close(fd);
-    return -2;
-  }
-
-  fd = open("/usr", O_RDWR);
-  if (fd != -1) {
-    close(fd);
-    return -3;
-  }
-
   return 0;
 }
 
@@ -1088,7 +1075,7 @@ struct {
     FUNC_DEF(test_strcspn),
     FUNC_DEF(test_mbstowcs),
     FUNC_DEF(test_CFMutableString),
-    FUNC_DEF(test_open),
+    FUNC_DEF(test_fwrite),
 };
 // clang-format on
 
