@@ -51,6 +51,7 @@ pub trait GLES {
     unsafe fn GetFloatv(&mut self, pname: GLenum, params: *mut GLfloat);
     unsafe fn GetIntegerv(&mut self, pname: GLenum, params: *mut GLint);
     unsafe fn GetTexEnviv(&mut self, target: GLenum, pname: GLenum, params: *mut GLint);
+    unsafe fn GetTexEnvfv(&mut self, target: GLenum, pname: GLenum, params: *mut GLfloat);
     unsafe fn GetPointerv(&mut self, pname: GLenum, params: *mut *const GLvoid);
     unsafe fn Hint(&mut self, target: GLenum, mode: GLenum);
     unsafe fn Flush(&mut self);
@@ -82,6 +83,7 @@ pub trait GLES {
     unsafe fn Viewport(&mut self, x: GLint, y: GLint, width: GLsizei, height: GLsizei);
     unsafe fn LineWidth(&mut self, val: GLfloat);
     unsafe fn LineWidthx(&mut self, val: GLfixed);
+    unsafe fn StencilMask(&mut self, mask: GLuint);
 
     // Points
     unsafe fn PointSize(&mut self, size: GLfloat);
