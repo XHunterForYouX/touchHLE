@@ -11,7 +11,7 @@ use crate::frameworks::foundation::{ns_string, unichar};
 use crate::libc::clocale::{setlocale, LC_CTYPE};
 use crate::libc::posix_io::{STDERR_FILENO, STDOUT_FILENO};
 use crate::libc::stdio::FILE;
-use crate::libc::stdlib::{atof_inner, atoi_inner, strtoul};
+use crate::libc::stdlib::{atof_inner, strtol_inner, strtoul};
 use crate::libc::string::strlen;
 use crate::libc::wchar::wchar_t;
 use crate::mem::{ConstPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr};
@@ -86,7 +86,12 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
 
         let length_modifier = if get_format_char(&env.mem, format_char_idx) == b'l' {
             format_char_idx += 1;
-            Some(b'l')
+            if get_format_char(&env.mem, format_char_idx) == b'l' {
+                format_char_idx += 1;
+                Some("ll")
+            } else {
+                Some("l")
+            }
         } else {
             None
         };
@@ -137,12 +142,33 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                     res.extend_from_slice("(null)".as_bytes());
                 }
             }
+            b'S' => {
+                // TODO: support length modifier
+                assert!(length_modifier.is_none());
+                // TODO: support other locales
+                let ctype_locale = setlocale(env, LC_CTYPE, Ptr::null());
+                assert_eq!(env.mem.read(ctype_locale), b'C');
+                let w_string: ConstPtr<wchar_t> = args.next(env);
+                assert!(pad_char == ' ' && pad_width == 0); // TODO
+                if !w_string.is_null() {
+                    res.extend_from_slice(env.mem.wcstr_at(w_string).as_bytes());
+                } else {
+                    res.extend_from_slice("(null)".as_bytes());
+                }
+            }
             b'd' | b'i' | b'u' => {
                 // Note: on 32-bit system int and long are i32,
-                // so length_modifier is ignored
+                // so single length_modifier is ignored (but not double one!)
                 let int: i64 = if specifier == b'u' {
-                    let uint: u32 = args.next(env);
-                    uint.into()
+                    if length_modifier == Some("ll") {
+                        let uint: u64 = args.next(env);
+                        uint.try_into().unwrap()
+                    } else {
+                        let uint: u32 = args.next(env);
+                        uint.into()
+                    }
+                } else if length_modifier == Some("ll") {
+                    args.next(env)
                 } else {
                     let int: i32 = args.next(env);
                     int.into()
@@ -519,12 +545,6 @@ fn sscanf_common(
     format: ConstPtr<u8>,
     mut args: VaList,
 ) -> i32 {
-    fn isspace(env: &mut Environment, src: ConstPtr<u8>) -> bool {
-        let c = env.mem.read(src);
-        // Rust's definition of whitespace excludes vertical tab, unlike C's
-        c.is_ascii_whitespace() || c == b'\x0b'
-    }
-
     let mut src_ptr = src.cast_mut();
     let mut format_char_idx = 0;
 
@@ -570,17 +590,19 @@ fn sscanf_common(
 
         match specifier {
             b'd' | b'i' => {
-                if specifier == b'i' {
-                    // TODO: hexs and octals
-                    assert_ne!(env.mem.read(src_ptr), b'0');
-                }
+                let base: u32 = if specifier == b'd' {
+                    10
+                } else {
+                    // automatic base detection in strtol
+                    0
+                };
 
                 match length_modifier {
                     Some(lm) => {
                         match lm {
                             b'h' => {
                                 // signed short* or unsigned short*
-                                match atoi_inner(env, src_ptr.cast_const()) {
+                                match strtol_inner(env, src_ptr.cast_const(), base) {
                                     Ok((val, len)) => {
                                         if max_width > 0 {
                                             assert_eq!(max_width, len as i32);
@@ -596,7 +618,7 @@ fn sscanf_common(
                             _ => unimplemented!(),
                         }
                     }
-                    _ => match atoi_inner(env, src_ptr.cast_const()) {
+                    _ => match strtol_inner(env, src_ptr.cast_const(), base) {
                         Ok((val, len)) => {
                             src_ptr += len;
                             let c_int_ptr: ConstPtr<i32> = args.next(env);
@@ -787,3 +809,11 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(fprintf(_, _, _)),
     export_c_func!(vfprintf(_, _, _)),
 ];
+
+// Helper function, not a part of printf family
+// TODO: write proper libc's isspace()
+pub fn isspace(env: &mut Environment, src: ConstPtr<u8>) -> bool {
+    let c = env.mem.read(src);
+    // Rust's definition of whitespace excludes vertical tab, unlike C's
+    c.is_ascii_whitespace() || c == b'\x0b'
+}
