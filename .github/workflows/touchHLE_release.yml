@@ -1,6 +1,7 @@
 name: Build touchHLE
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "Trunk" ]
   pull_request:
