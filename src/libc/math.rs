@@ -235,6 +235,90 @@ fn fmin(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
 fn fminf(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
     arg1.min(arg2)
 }
+fn AudioQueueAllocateBufferWithPacketDescriptions(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn AudioSessionGetPropertySize(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn CFBundleCopyResourceURLForLocalization(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn CGDataProviderCreateDirect(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn CGImageCreate(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn CGImageCreateWithJPEGDataProvider(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glDrawTexiOES(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glBindFramebuffer(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glCheckFramebufferStatus(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glFramebufferRenderbuffer(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glFramebufferTexture2D(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGenFramebuffers(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glRenderbufferStorage(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glCreateShader(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glShaderSource(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glSampleCoverage(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glCompileShader(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGetShaderiv(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glCreateProgram(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glAttachShader(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glLinkProgram(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGetProgramiv(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGetAttribLocation(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGetUniformLocation(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glGetTexParameteriv(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glReadPixels(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn glPointSizePointerOES(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
+fn abort(_env: &mut Environment, arg1: f32, arg2: f32) -> f32 {
+    arg1.min(arg2)
+}
 fn gzopen(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
@@ -242,6 +326,9 @@ fn gzread(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
 fn gzclose(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn gzeof(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
 fn inflateInit_(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
@@ -265,13 +352,6 @@ fn setsockopt(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
 fn strcasestr(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
-fn gethostname(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
-    arg1.min(arg2)
-}
-fn getpagesize(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
-    arg1.min(arg2)
-}
-
 fn getsockname(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
@@ -284,10 +364,52 @@ fn ioctl(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
 fn inet_addr(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
+fn inet_ntoa(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
 fn listen(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
+fn uncompress(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn wcstok(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn _exit(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn __sprintf_chk(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_open(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_errcode(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_errmsg(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_prepare_v2(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_step(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_finalize(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn sqlite3_mprintf(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
 fn putc(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn getc(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
+fn ungetc(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
 fn hypot(env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
@@ -398,7 +520,7 @@ fn OSMemoryBarrier(env: &mut Environment) {
 
 }
 
-fn fesetround(_env: &mut Environment, round: i32) {
+fn fesetround(_env: &mut Environment, _round: i32) {
     // TODO
 }
 
@@ -473,9 +595,38 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(fmaxf(_, _)),
     export_c_func!(fmin(_, _)),
     export_c_func!(fminf(_, _)),
+    export_c_func!(AudioQueueAllocateBufferWithPacketDescriptions(_, _)),
+    export_c_func!(AudioSessionGetPropertySize(_, _)),
+    export_c_func!(CFBundleCopyResourceURLForLocalization(_, _)),
+    export_c_func!(CGDataProviderCreateDirect(_, _)),
+    export_c_func!(CGImageCreate(_, _)),
+    export_c_func!(CGImageCreateWithJPEGDataProvider(_, _)),
+    export_c_func!(glDrawTexiOES(_, _)),
+    export_c_func!(glBindFramebuffer(_, _)),
+    export_c_func!(glCheckFramebufferStatus(_, _)),
+    export_c_func!(glFramebufferRenderbuffer(_, _)),
+    export_c_func!(glFramebufferTexture2D(_, _)),
+    export_c_func!(glGenFramebuffers(_, _)),
+    export_c_func!(glRenderbufferStorage(_, _)),
+    export_c_func!(glCreateShader(_, _)),
+    export_c_func!(glShaderSource(_, _)),
+    export_c_func!(glSampleCoverage(_, _)),
+    export_c_func!(glCompileShader(_, _)),
+    export_c_func!(glGetShaderiv(_, _)),
+    export_c_func!(glCreateProgram(_, _)),
+    export_c_func!(glAttachShader(_, _)),
+    export_c_func!(glLinkProgram(_, _)),
+    export_c_func!(glGetProgramiv(_, _)),
+    export_c_func!(glGetAttribLocation(_, _)),
+    export_c_func!(glGetUniformLocation(_, _)),
+    export_c_func!(glGetTexParameteriv(_, _)),
+    export_c_func!(glReadPixels(_, _)),
+    export_c_func!(glPointSizePointerOES(_, _)),
+    export_c_func!(abort(_, _)),
     export_c_func!(gzopen(_, _)),
     export_c_func!(gzread(_, _)),
     export_c_func!(gzclose(_, _)),
+    export_c_func!(gzeof(_, _)),
     export_c_func!(inflateInit_(_, _)),
     export_c_func!(inflateInit2_(_, _)),
     export_c_func!(inflateEnd(_, _)),
@@ -483,14 +634,26 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(rename(_, _)),
     export_c_func!(setsockopt(_, _)),
     export_c_func!(strcasestr(_, _)),
-    export_c_func!(gethostname(_, _)),
-    export_c_func!(getpagesize(_, _)),
     export_c_func!(getsockname(_, _)),
     export_c_func!(socket(_, _)),
     export_c_func!(ioctl(_, _)),
     export_c_func!(inet_addr(_, _)),
+    export_c_func!(inet_ntoa(_, _)),
     export_c_func!(listen(_, _)),
+    export_c_func!(uncompress(_, _)),
+    export_c_func!(wcstok(_, _)),
+    export_c_func!(_exit(_, _)),
+    export_c_func!(__sprintf_chk(_, _)),
+    export_c_func!(sqlite3_open(_, _)),
+    export_c_func!(sqlite3_errcode(_, _)),
+    export_c_func!(sqlite3_errmsg(_, _)),
+    export_c_func!(sqlite3_prepare_v2(_, _)),
+    export_c_func!(sqlite3_step(_, _)),
+    export_c_func!(sqlite3_finalize(_, _)),
+    export_c_func!(sqlite3_mprintf(_, _)),
     export_c_func!(putc(_, _)),
+    export_c_func!(getc(_, _)),
+    export_c_func!(ungetc(_, _)),
     export_c_func!(hypot(_, _)),
     export_c_func!(lrint(_)),
     export_c_func!(lrintf(_)),
