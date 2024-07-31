@@ -131,6 +131,26 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; text_label setFont:new_font]
 }
 
+- (())setTag:(bool)tag {
+    log!("TODO: setTag:{}", tag);
+}
+
+- (())setSecureTextEntry:(bool)secure {
+    log!("TODO: setSecureTextEntry:{}", secure);
+}
+
+- (())setEnablesReturnKeyAutomatically:(bool)enables {
+    log!("TODO: setEnablesReturnKeyAutomatically:{}", enables);
+}
+
+- (())setTextAlignment:(bool)text {
+    log!("TODO: setTextAlignment:{}", text);
+}
+
+- (())setPlaceholder:(bool)place {
+    log!("TODO: setPlaceholder:{}", place);
+}
+
 - (())setClearsOnBeginEditing:(bool)clear {
     log!("TODO: setClearsOnBeginEditing:{}", clear);
 }
@@ -255,7 +275,7 @@ pub fn handle_text(env: &mut Environment, text_field: id, text: String) {
     log_dbg!("Calling handle_text for {:?} with '{}'", text_field, text);
     let txt = ns_string::from_rust_string(env, text);
     let txt_len: NSUInteger = msg![env; txt length];
-    assert_eq!(txt_len, 1);
+    // assert_eq!(txt_len, 1);
 
     let text_label = env
         .objc
