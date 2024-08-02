@@ -1076,10 +1076,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; _touchHLE_NSMutableString allocWithZone:zone]
 }
 
-+ (id)stringWithCapacity:(NSUInteger)_capacity {
-    msg_class![env; NSMutableString new]
++ (id)stringWithCapacity:(NSUInteger)capacity {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithCapacity:capacity];
+    autorelease(env, new)
 }
-    
+
 // NSCopying implementation
 - (id)copyWithZone:(NSZonePtr)_zone {
     todo!(); // TODO: this should produce an immutable copy
@@ -1370,12 +1372,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
-- (id)initWithString:(id)string { // NSString *
-    // TODO: optimize for more common cases (or maybe just call copy?)
-    let mut code_units = Vec::new();
-    for_each_code_unit(env, string, |_, c| code_units.push(c));
-    *env.objc.borrow_mut(this) = StringHostObject::Utf16(code_units);
-    this
+- (id)initWithCapacity:(NSUInteger)_capacity {
+    // TODO: capacity
+    msg![env; this init]
 }
 
 @end
