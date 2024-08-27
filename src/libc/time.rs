@@ -6,7 +6,8 @@
 //! `time.h` (C) and `sys/time.h` (POSIX)
 
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::{guest_size_of, ConstPtr, MutPtr, Ptr, SafeRead, GuestUSize};
+use crate::libc::errno::set_errno;
+use crate::mem::{guest_size_of, ConstPtr, MutPtr, Ptr, SafeRead};
 use crate::Environment;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -37,6 +38,9 @@ fn clock(env: &mut Environment) -> clock_t {
 }
 
 fn time(env: &mut Environment, out: MutPtr<time_t>) -> time_t {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let time64 = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -368,6 +372,9 @@ fn gettimeofday(
     timeval_ptr: MutPtr<timeval>,
     timezone_ptr: MutPtr<timezone>,
 ) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     if !timezone_ptr.is_null() {
         env.mem.write(
             timezone_ptr,
@@ -400,6 +407,9 @@ fn gettimeofday(
 }
 
 fn nanosleep(env: &mut Environment, rqtp: ConstPtr<timespec>, _rmtp: MutPtr<timespec>) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let t = env.mem.read(rqtp);
     let tv_sec = t.tv_sec;
     let tv_nsec = t.tv_nsec;

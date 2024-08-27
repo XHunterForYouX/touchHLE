@@ -10,16 +10,18 @@
 
 mod mutex;
 
-use crate::abi::GuestRet;
+use crate::abi::{CallFromHost, GuestRet};
 use crate::libc::semaphore::sem_t;
 use crate::mem::{MutPtr, MutVoidPtr};
 use crate::{
     abi, bundle, cpu, dyld, frameworks, fs, gdb, image, libc, mach_o, mem, objc, options, stack,
     window,
 };
+use std::collections::HashMap;
 use std::net::TcpListener;
 use std::time::{Duration, Instant};
 
+use crate::libc::pthread::cond::pthread_cond_t;
 pub use mutex::{MutexId, MutexType, PTHREAD_MUTEX_DEFAULT};
 
 /// Index into the [Vec] of threads. Thread 0 is always the main thread.
@@ -31,7 +33,7 @@ pub struct Thread {
     pub active: bool,
     /// If this is not [ThreadBlock::NotBlocked], the thread is not executing
     /// until a certain condition is fufilled.
-    blocked_by: ThreadBlock,
+    pub blocked_by: ThreadBlock,
     /// Set to [true] when a thread is running its startup routine (i.e. the
     /// function pointer passed to `pthread_create`). When it returns to the
     /// host, it should become inactive.
@@ -95,6 +97,7 @@ pub struct Environment {
     pub mutex_state: mutex::MutexState,
     pub options: options::Options,
     gdb_server: Option<gdb::GdbServer>,
+    pub env_vars: HashMap<Vec<u8>, MutPtr<u8>>,
 }
 
 /// What to do next when executing this thread.
@@ -111,7 +114,7 @@ enum ThreadNextAction {
 
 /// If/what a thread is blocked by.
 #[derive(Debug, Clone)]
-enum ThreadBlock {
+pub enum ThreadBlock {
     // Default state. (thread is not blocked)
     NotBlocked,
     // Thread is sleeping. (until Instant)
@@ -120,6 +123,8 @@ enum ThreadBlock {
     Mutex(MutexId),
     // Thread is waiting on a semaphore.
     Semaphore(MutPtr<sem_t>),
+    // Thread is wating on a condition variable
+    Condition(pthread_cond_t),
     // Thread is waiting for another thread to finish (joining).
     Joining(ThreadId, MutPtr<MutVoidPtr>),
     // Deferred guest-to-host return
@@ -280,16 +285,36 @@ impl Environment {
             framework_state: Default::default(),
             options,
             gdb_server: None,
+            env_vars: Default::default(),
         };
+
+        env.set_up_initial_env_vars();
 
         dyld::Dyld::do_late_linking(&mut env);
 
         {
             let bin_path = env.bundle.executable_path();
+
+            let envp_list: Vec<String> = env
+                .env_vars
+                .clone()
+                .iter_mut()
+                .map(|tuple| {
+                    [
+                        std::str::from_utf8(tuple.0).unwrap(),
+                        "=",
+                        env.mem.cstr_at_utf8(*tuple.1).unwrap(),
+                    ]
+                    .concat()
+                })
+                .collect();
+            let envp_ref_list: Vec<&str> =
+                envp_list.iter().map(|keyvalue| keyvalue.as_str()).collect();
+
             let bin_path_apple_key = format!("executable_path={}", bin_path.as_str());
 
             let argv = &[bin_path.as_str()];
-            let envp = &[];
+            let envp = envp_ref_list.as_slice();
             let apple = &[bin_path_apple_key.as_str()];
             stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, argv, envp, apple);
         }
@@ -338,13 +363,12 @@ impl Environment {
             let count = section.size / 4;
             for i in 0..count {
                 let func = env.mem.read(base + i);
-                func.call(&mut env);
+                () = func.call_from_host(&mut env, ());
             }
             log_dbg!("Static initialization done");
         }
 
         env.cpu.branch(entry_point_addr);
-
         Ok(env)
     }
 
@@ -355,13 +379,15 @@ impl Environment {
     /// some of the fields with fake data is a hack, but it means the frameworks
     /// do not need to be aware of the app picker's peculiarities, so it is
     /// cleaner than the alternative!
-    pub fn new_without_app(options: options::Options) -> Result<Environment, String> {
+    pub fn new_without_app(
+        options: options::Options,
+        icon: image::Image,
+    ) -> Result<Environment, String> {
         let bundle = bundle::Bundle::new_fake_bundle();
         let fs = fs::Fs::new_fake_fs();
 
         let startup_time = Instant::now();
 
-        let icon = None;
         let launch_image = None;
 
         assert!(!options.headless);
@@ -376,7 +402,7 @@ impl Environment {
                 },
                 super::VERSION
             ),
-            icon,
+            Some(icon),
             launch_image,
             &options,
         ));
@@ -422,7 +448,10 @@ impl Environment {
             framework_state: Default::default(),
             options,
             gdb_server: None,
+            env_vars: Default::default(),
         };
+
+        env.set_up_initial_env_vars();
 
         // Dyld::do_late_linking() would be called here, but it doesn't do
         // anything relevant here, so it's skipped.
@@ -705,7 +734,7 @@ impl Environment {
     }
 
     /// Run the emulator until the app returns control to the host. This is for
-    /// host-to-guest function calls (see [abi::GuestFunction::call]).
+    /// host-to-guest function calls (see [abi::CallFromHost::call_from_host]).
     ///
     /// Note that this might execute code from other threads while waiting for
     /// the app to return control on the original thread!
@@ -997,6 +1026,28 @@ impl Environment {
                                 break;
                             }
                         }
+                        ThreadBlock::Condition(cond) => {
+                            let host_cond = self
+                                .libc_state
+                                .pthread
+                                .cond
+                                .condition_variables
+                                .get(&cond)
+                                .unwrap();
+                            if host_cond.done {
+                                log_dbg!(
+                                    "Thread {} is unblocking on cond var {:?}.",
+                                    self.current_thread,
+                                    cond
+                                );
+                                self.threads[i].blocked_by = ThreadBlock::NotBlocked;
+                                suitable_thread = Some(i);
+                                let used_mutex =
+                                    self.libc_state.pthread.cond.mutexes.remove(&cond).unwrap();
+                                mutex_to_relock = Some(used_mutex.mutex_id);
+                                break;
+                            }
+                        }
                         ThreadBlock::Joining(joinee_thread, ptr) => {
                             if !self.threads[joinee_thread].active {
                                 log_dbg!(
@@ -1060,5 +1111,16 @@ impl Environment {
                 }
             }
         }
+    }
+
+    fn set_up_initial_env_vars(&mut self) {
+        // TODO: Provide all the system environment variables an app might
+        // expect to find.
+
+        // Initialize HOME envvar
+        let home_value_cstr = self
+            .mem
+            .alloc_and_write_cstr(self.fs.home_directory().as_str().as_bytes());
+        self.env_vars.insert(b"HOME".to_vec(), home_value_cstr);
     }
 }

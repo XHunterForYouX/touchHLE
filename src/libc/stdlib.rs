@@ -9,11 +9,11 @@ use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{export_c_func, export_c_func_aliased, FunctionExports};
 use crate::fs::{resolve_path, GuestPath};
 use crate::libc::clocale::{setlocale, LC_CTYPE};
+use crate::libc::errno::set_errno;
 use crate::libc::string::strlen;
 use crate::libc::wchar::wchar_t;
 use crate::mem::{ConstPtr, ConstVoidPtr, GuestUSize, MutPtr, MutVoidPtr, Ptr};
 use crate::Environment;
-use std::collections::HashMap;
 use std::str::FromStr;
 
 pub mod qsort;
@@ -23,7 +23,6 @@ pub struct State {
     rand: u32,
     random: u32,
     arc4random: u32,
-    env: HashMap<Vec<u8>, MutPtr<u8>>,
 }
 
 // Sizes of zero are implementation-defined. macOS will happily give you back
@@ -31,15 +30,24 @@ pub struct State {
 // (touchHLE's allocator will round up allocations to at least 16 bytes.)
 
 fn malloc(env: &mut Environment, size: GuestUSize) -> MutVoidPtr {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     env.mem.alloc(size)
 }
 
 fn calloc(env: &mut Environment, count: GuestUSize, size: GuestUSize) -> MutVoidPtr {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let total = size.checked_mul(count).unwrap();
     env.mem.alloc(total)
 }
 
 fn realloc(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidPtr {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     if ptr.is_null() {
         return malloc(env, size);
     }
@@ -47,6 +55,9 @@ fn realloc(env: &mut Environment, ptr: MutVoidPtr, size: GuestUSize) -> MutVoidP
 }
 
 fn free(env: &mut Environment, ptr: MutVoidPtr) {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     if ptr.is_null() {
         // "If ptr is a NULL pointer, no operation is performed."
         return;
@@ -79,6 +90,9 @@ fn skip_whitespace(env: &mut Environment, s: ConstPtr<u8>) -> ConstPtr<u8> {
 }
 
 fn atoi(env: &mut Environment, s: ConstPtr<u8>) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     // conveniently, overflow is undefined, so 0 is as valid a result as any
     let (res, _) = strtol_inner(env, s, 10).unwrap_or((0, 0));
     res
@@ -93,6 +107,9 @@ fn atof(env: &mut Environment, s: ConstPtr<u8>) -> f64 {
 }
 
 fn strtod(env: &mut Environment, nptr: ConstPtr<u8>, endptr: MutPtr<MutPtr<u8>>) -> f64 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     log_dbg!("strtod nptr {}", env.mem.cstr_at_utf8(nptr).unwrap());
     let (res, len) = atof_inner(env, nptr).unwrap_or((0.0, 0));
     if !endptr.is_null() {
@@ -130,9 +147,15 @@ fn rand(env: &mut Environment) -> i32 {
 // BSD's "better" random number generator, with an implementation that is not
 // actually better.
 fn srandom(env: &mut Environment, seed: u32) {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     env.libc_state.stdlib.random = seed;
 }
 fn random(env: &mut Environment) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     env.libc_state.stdlib.random = prng(env.libc_state.stdlib.random);
     (env.libc_state.stdlib.random as i32) & RAND_MAX
 }
@@ -144,10 +167,7 @@ fn arc4random(env: &mut Environment) -> u32 {
 
 fn getenv(env: &mut Environment, name: ConstPtr<u8>) -> MutPtr<u8> {
     let name_cstr = env.mem.cstr_at(name);
-    // TODO: Provide all the system environment variables an app might expect to
-    // find. Currently the only environment variables that can be found are
-    // those put there by the app (Crash Bandicoot Nitro Kart 3D uses this).
-    let Some(&value) = env.libc_state.stdlib.env.get(name_cstr) else {
+    let Some(&value) = env.env_vars.get(name_cstr) else {
         log!(
             "Warning: getenv() for {:?} ({:?}) unhandled",
             name,
@@ -155,6 +175,7 @@ fn getenv(env: &mut Environment, name: ConstPtr<u8>) -> MutPtr<u8> {
         );
         return Ptr::null();
     };
+
     log_dbg!(
         "getenv({:?} ({:?})) => {:?} ({:?})",
         name,
@@ -166,8 +187,11 @@ fn getenv(env: &mut Environment, name: ConstPtr<u8>) -> MutPtr<u8> {
     value
 }
 fn setenv(env: &mut Environment, name: ConstPtr<u8>, value: ConstPtr<u8>, overwrite: i32) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let name_cstr = env.mem.cstr_at(name);
-    if let Some(&existing) = env.libc_state.stdlib.env.get(name_cstr) {
+    if let Some(&existing) = env.env_vars.get(name_cstr) {
         if overwrite == 0 {
             return 0; // success
         }
@@ -175,7 +199,7 @@ fn setenv(env: &mut Environment, name: ConstPtr<u8>, value: ConstPtr<u8>, overwr
     };
     let value = super::string::strdup(env, value);
     let name_cstr = env.mem.cstr_at(name); // reborrow
-    env.libc_state.stdlib.env.insert(name_cstr.to_vec(), value);
+    env.env_vars.insert(name_cstr.to_vec(), value);
     log_dbg!(
         "Stored new value {:?} ({:?}) for environment variable {:?}",
         value,
@@ -185,7 +209,10 @@ fn setenv(env: &mut Environment, name: ConstPtr<u8>, value: ConstPtr<u8>, overwr
     0 // success
 }
 
-fn exit(_env: &mut Environment, exit_code: i32) {
+fn exit(env: &mut Environment, exit_code: i32) {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     echo!("App called exit(), exiting.");
     std::process::exit(exit_code);
 }
@@ -227,6 +254,9 @@ fn bsearch(
 }
 
 fn strtof(env: &mut Environment, nptr: ConstPtr<u8>, endptr: MutPtr<ConstPtr<u8>>) -> f32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let (number, length) = atof_inner(env, nptr).unwrap_or((0.0, 0));
     if !endptr.is_null() {
         env.mem.write(endptr, nptr + length);
@@ -241,6 +271,9 @@ pub fn strtoul(
     endptr: MutPtr<MutPtr<u8>>,
     base: i32,
 ) -> u32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     let s = env.mem.cstr_at_utf8(str).unwrap();
     log_dbg!("strtoul({:?} ({}), {:?}, {})", str, s, endptr, base);
     assert_eq!(base, 16);
@@ -254,6 +287,9 @@ pub fn strtoul(
 }
 
 fn strtol(env: &mut Environment, str: ConstPtr<u8>, endptr: MutPtr<MutPtr<u8>>, base: i32) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     match strtol_inner(env, str, base as u32) {
         Ok((res, len)) => {
             if !endptr.is_null() {
@@ -305,6 +341,9 @@ fn mbstowcs(
     s: ConstPtr<u8>,
     n: GuestUSize,
 ) -> GuestUSize {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
     // TODO: support other locales
     let ctype_locale = setlocale(env, LC_CTYPE, Ptr::null());
     assert_eq!(env.mem.read(ctype_locale), b'C');

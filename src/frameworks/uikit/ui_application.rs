@@ -6,7 +6,7 @@
 //! `UIApplication` and `UIApplicationMain`.
 
 use super::ui_device::*;
-use crate::dyld::{export_c_func, FunctionExports};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::foundation::{ns_array, ns_string, NSUInteger};
 use crate::frameworks::uikit::ui_nib::load_main_nib_file;
 use crate::mem::MutPtr;
@@ -73,7 +73,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     let old_delegate = std::mem::replace(&mut host_object.delegate, delegate);
     if host_object.delegate_is_retained {
         host_object.delegate_is_retained = false;
-        release(env, old_delegate);
+        if delegate != old_delegate {
+            release(env, old_delegate);
+        }
     }
 }
 
@@ -108,7 +110,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this setStatusBarOrientation:orientation]
 }
 
-- (bool)idleTimerDisabled {
+- (bool)isIdleTimerDisabled {
     !env.window().is_screen_saver_enabled()
 }
 - (())setIdleTimerDisabled:(bool)disabled {
@@ -307,5 +309,22 @@ pub(super) fn exit(env: &mut Environment) {
 
     std::process::exit(0);
 }
+
+pub const UIApplicationDidReceiveMemoryWarningNotification: &str =
+    "UIApplicationDidReceiveMemoryWarningNotification";
+pub const UIApplicationLaunchOptionsRemoteNotificationKey: &str =
+    "UIApplicationLaunchOptionsRemoteNotificationKey";
+
+/// `UIApplicationLaunchOptionsKey` values.
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIApplicationDidReceiveMemoryWarningNotification",
+        HostConstant::NSString(UIApplicationDidReceiveMemoryWarningNotification),
+    ),
+    (
+        "_UIApplicationLaunchOptionsRemoteNotificationKey",
+        HostConstant::NSString(UIApplicationLaunchOptionsRemoteNotificationKey),
+    ),
+];
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];

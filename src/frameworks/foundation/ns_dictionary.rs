@@ -293,9 +293,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; _touchHLE_NSMutableDictionary allocWithZone:zone]
 }
 
-+ (id)dictionaryWithCapacity:(NSUInteger)cap {
-    let new = msg![env; this alloc];
-    let new = msg![env; new initWithCapacity: cap];
++ (id)dictionaryWithCapacity:(NSUInteger)capacity {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithCapacity:capacity];
     autorelease(env, new)
 }
 
@@ -486,6 +486,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)init {
     *env.objc.borrow_mut(this) = <DictionaryHostObject as Default>::default();
     this
+}
+
+- (id)initWithCapacity:(NSUInteger)_capacity {
+    // TODO: capacity
+    msg![env; this init]
 }
 
 // TODO: enumeration, more init methods, etc

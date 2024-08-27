@@ -25,14 +25,16 @@ Compatibility:
   - [Asphalt 4: Elite Racing](https://appdb.touchhle.org/apps/96) (@ciciplusplus)
   - [Prince of Persia: Warrior Within](https://appdb.touchhle.org/apps/127) (@ciciplusplus)
   - [Resident Evil 4: Mobile Edition](https://appdb.touchhle.org/apps/91) (@alborrajo)
+  - [Command & Conquer: Red Alert](https://appdb.touchhle.org/apps/404) (@ciciplusplus)
 - API support improvements:
-  - Various small contributions. (@hikari-no-yume, @alborrajo, @ciciplusplus, @atasro2)
+  - Various small contributions. (@hikari-no-yume, @alborrajo, @ciciplusplus, @atasro2, @LennyKappa)
   - UITextField now supports real text input with a keyboard. On Windows/macOS physical keyboard is used, on Android it's done via a system soft keyboard. (@ciciplusplus)
 
 Usability:
 
 - Added default options for Earthworm Jim and improved default options for Crash Bandicoot Nitro Kart 3D. (@celerizer)
 - The app picker now has a “Quick options” feature. This provides a quicker and easier way to set some common options. (@hikari-no-yume)
+- The accelerometer (tilt controls) can now be simulated using a mouse, instead of a game controller or real accelerometer. Simply hold down the right mouse button and move the mouse cursor. (@alborrajo)
 
 Quality:
 

@@ -49,6 +49,14 @@ enum FileLocation {
 }
 
 #[derive(Debug)]
+pub enum FsError {
+    AlreadyExist,
+    InvalidParentDir,
+    NonexistentParentDir,
+    ReadonlyParentDir,
+}
+
+#[derive(Debug)]
 enum FsNode {
     File {
         location: FileLocation,
@@ -345,6 +353,7 @@ fn handle_open_err<T, E: std::fmt::Display, P: std::fmt::Debug>(
 /// Like [File] but for the guest filesystem.
 #[derive(Debug)]
 pub enum GuestFile {
+    Directory,
     File(File),
     IpaBundleFile(IpaFile),
     ResourceFile(paths::ResourceFile),
@@ -363,10 +372,15 @@ impl GuestFile {
         GuestFile::ResourceFile(file)
     }
 
+    fn from_directory() -> GuestFile {
+        GuestFile::Directory
+    }
+
     pub fn sync_all(&self) -> std::io::Result<()> {
         match self {
             GuestFile::File(file) => file.sync_all(),
             GuestFile::IpaBundleFile(_) | GuestFile::ResourceFile(_) => Ok(()),
+            GuestFile::Directory => panic!("Attempt to sync a directory as a guest file"),
         }
     }
     pub fn set_len(&self, len: u64) -> std::io::Result<()> {
@@ -378,6 +392,7 @@ impl GuestFile {
             GuestFile::ResourceFile(file) => {
                 panic!("Attempt to resize a read-only file: {:?}", file)
             }
+            GuestFile::Directory => panic!("Attempt to resize a directory as a guest file"),
         }
     }
 }
@@ -388,6 +403,7 @@ impl Read for GuestFile {
             GuestFile::File(file) => file.read(buf),
             GuestFile::IpaBundleFile(file) => file.read(buf),
             GuestFile::ResourceFile(file) => file.get().read(buf),
+            GuestFile::Directory => panic!("Attempt to read from a directory as a guest file"),
         }
     }
 }
@@ -402,6 +418,7 @@ impl Write for GuestFile {
             GuestFile::ResourceFile(file) => {
                 panic!("Attempt to write to a read-only file: {:?}", file)
             }
+            GuestFile::Directory => panic!("Attempt to write to a directory as a guest file"),
         }
     }
 
@@ -414,6 +431,7 @@ impl Write for GuestFile {
             GuestFile::ResourceFile(file) => {
                 panic!("Attempt to flush a read-only file: {:?}", file)
             }
+            GuestFile::Directory => panic!("Attempt to flush a directory as a guest file"),
         }
     }
 }
@@ -424,6 +442,7 @@ impl Seek for GuestFile {
             GuestFile::File(file) => file.seek(pos),
             GuestFile::IpaBundleFile(file) => file.seek(pos),
             GuestFile::ResourceFile(file) => file.get().seek(pos),
+            GuestFile::Directory => panic!("Attempt to seek in a directory as a guest file"),
         }
     }
 }
@@ -839,7 +858,11 @@ impl Fs {
                     }
                 }
                 FsNode::Directory { .. } => {
-                    return Err(());
+                    if write {
+                        return Err(());
+                    } else {
+                        return Ok(GuestFile::from_directory());
+                    }
                 }
             }
         };
@@ -969,10 +992,12 @@ impl Fs {
     }
 
     /// Like [std::fs::create_dir] but for the guest filesystem.
-    pub fn create_dir<P: AsRef<GuestPath>>(&mut self, path: P) -> Result<(), ()> {
+    pub fn create_dir<P: AsRef<GuestPath>>(&mut self, path: P) -> Result<(), FsError> {
         let path = path.as_ref();
 
-        let (parent_node, new_dir_name) = self.lookup_parent_node(path).ok_or(())?;
+        let (parent_node, new_dir_name) = self
+            .lookup_parent_node(path)
+            .ok_or(FsError::NonexistentParentDir)?;
 
         // Parent directory is not a directory
         let FsNode::Directory {
@@ -980,17 +1005,17 @@ impl Fs {
             writeable: dir_host_path,
         } = parent_node
         else {
-            return Err(());
+            return Err(FsError::InvalidParentDir);
         };
 
         // There's already a file/directory with this name
         if children.contains_key(&new_dir_name) {
-            return Err(());
+            return Err(FsError::AlreadyExist);
         }
 
         let Some(dir_host_path) = dir_host_path else {
             log!("Warning: attempt to create directory at path {:?}, but parent directory is read-only", path);
-            return Err(());
+            return Err(FsError::ReadonlyParentDir);
         };
 
         for c in new_dir_name.chars() {

@@ -34,7 +34,28 @@ use crate::gles::gles11_raw::types::{GLintptr as HostGLintptr, GLsizeiptr as Hos
 type GuestGLsizeiptr = GuestISize;
 type GuestGLintptr = GuestISize;
 
-fn with_ctx_and_mem<T: Copy, U>(env: &mut Environment, f: T) -> U
+/// List of compressed formats supported by our emulation.
+/// Currently, it's all the PVRTC and all paletted ones.
+const SUPPORTED_COMPRESSED_TEXTURE_FORMATS: &[GLenum] = &[
+    // PVRTC
+    gles11::COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,
+    gles11::COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,
+    gles11::COMPRESSED_RGB_PVRTC_2BPPV1_IMG,
+    gles11::COMPRESSED_RGB_PVRTC_4BPPV1_IMG,
+    // Paletted texture
+    gles11::PALETTE4_R5_G6_B5_OES,
+    gles11::PALETTE4_RGB5_A1_OES,
+    gles11::PALETTE4_RGB8_OES,
+    gles11::PALETTE4_RGBA4_OES,
+    gles11::PALETTE4_RGBA8_OES,
+    gles11::PALETTE8_R5_G6_B5_OES,
+    gles11::PALETTE8_RGB5_A1_OES,
+    gles11::PALETTE8_RGB8_OES,
+    gles11::PALETTE8_RGBA4_OES,
+    gles11::PALETTE8_RGBA8_OES,
+];
+
+fn with_ctx_and_mem<T, U>(env: &mut Environment, f: T) -> U
 where
     T: FnOnce(&mut dyn GLES, &mut Mem) -> U,
 {
@@ -90,10 +111,8 @@ fn glEnable(env: &mut Environment, cap: GLenum) {
         unsafe { gles.Enable(cap) };
     });
 }
-fn glIsEnabled(env: &mut Environment, cap: GLenum) {
-    with_ctx_and_mem(env, |gles, _mem| {
-        unsafe { gles.IsEnabled(cap) };
-    });
+fn glIsEnabled(env: &mut Environment, cap: GLenum) -> GLboolean {
+    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.IsEnabled(cap) })
 }
 fn glDisable(env: &mut Environment, cap: GLenum) {
     with_ctx_and_mem(env, |gles, _mem| {
@@ -122,6 +141,8 @@ fn glGetBooleanv(env: &mut Environment, pname: GLenum, params: MutPtr<GLboolean>
     });
 }
 fn glGetFloatv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfloat>) {
+    assert_ne!(gles11::NUM_COMPRESSED_TEXTURE_FORMATS, pname);
+    assert_ne!(gles11::COMPRESSED_TEXTURE_FORMATS, pname);
     with_ctx_and_mem(env, |gles, mem| {
         let params = mem.ptr_at_mut(params, 16 /* upper bound */);
         unsafe { gles.GetFloatv(pname, params) };
@@ -129,8 +150,20 @@ fn glGetFloatv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfloat>) {
 }
 fn glGetIntegerv(env: &mut Environment, pname: GLenum, params: MutPtr<GLint>) {
     with_ctx_and_mem(env, |gles, mem| {
-        let params = mem.ptr_at_mut(params, 16 /* upper bound */);
-        unsafe { gles.GetIntegerv(pname, params) };
+        match pname {
+            gles11::NUM_COMPRESSED_TEXTURE_FORMATS => {
+                mem.write(params, SUPPORTED_COMPRESSED_TEXTURE_FORMATS.len() as _);
+            }
+            gles11::COMPRESSED_TEXTURE_FORMATS => {
+                for (idx, &format) in SUPPORTED_COMPRESSED_TEXTURE_FORMATS.iter().enumerate() {
+                    mem.write(params + idx as GuestUSize, format as _);
+                }
+            }
+            _ => {
+                let params = mem.ptr_at_mut(params, 16 /* upper bound */);
+                unsafe { gles.GetIntegerv(pname, params) };
+            }
+        }
     });
 }
 fn glGetPointerv(env: &mut Environment, pname: GLenum, params: MutPtr<ConstVoidPtr>) {
@@ -528,8 +561,11 @@ unsafe fn translate_pointer_or_offset_to_host(
         std::ptr::null()
     } else {
         let pointer = pointer_or_offset;
-        // bounds checking is hopeless here
-        mem.ptr_at(pointer.cast::<u8>(), 0).cast::<GLvoid>()
+        // We need to use an unchecked version of ptr_at to avoid crashing here
+        // if dynamic state was disabled.
+        // Also, bounds checking is hopeless here
+        mem.unchecked_ptr_at(pointer.cast::<u8>(), 0)
+            .cast::<GLvoid>()
     }
 }
 

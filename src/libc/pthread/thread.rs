@@ -8,8 +8,8 @@
 use crate::abi::GuestFunction;
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::libc::errno::{EDEADLK, EINVAL};
-use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, MutVoidPtr, SafeRead};
-use crate::{Environment, mem, ThreadId};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutPtr, MutVoidPtr, SafeRead};
+use crate::{Environment, ThreadId};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -286,32 +286,33 @@ fn pthread_mach_thread_np(env: &mut Environment, thread: pthread_t) -> mach_port
     host_object.thread_id.try_into().unwrap()
 }
 
-fn pthread_getschedparam(env: &mut Environment, thread: pthread_t, policy: i32, param: MutVoidPtr) -> i32 {
+fn pthread_getschedparam(
+    _env: &mut Environment,
+    thread: pthread_t,
+    policy: i32,
+    param: MutVoidPtr,
+) -> i32 {
+    log_dbg!(
+        "TODO: pthread_getschedparam({:?}, {}, {:?})",
+        thread,
+        policy,
+        param
+    );
     0
 }
 
-fn pthread_setschedparam(env: &mut Environment, thread: pthread_t, policy: i32, param: ConstVoidPtr) -> i32 {
-    0
-}
-
-fn pthread_attr_setschedparam(env: &mut Environment, thread: pthread_t, policy: i32, param: ConstVoidPtr) -> i32 {
-    0
-}
-
-fn pthread_get_stackaddr_np(env: &mut Environment, thread: pthread_t) -> MutVoidPtr {
-    let x = env.libc_state.pthread.thread.threads.get_mut(&thread).unwrap();
-    let y = *env.threads.get(x.thread_id).unwrap().stack.clone().unwrap().end();// + 1;
-    MutVoidPtr::from_bits(y)
-}
-
-fn pthread_get_stacksize_np(env: &mut Environment, thread: pthread_t) -> GuestUSize {
-    env.mem
-        .secondary_thread_stack_size_override
-        .or_else(|| Some(Mem::SECONDARY_THREAD_STACK_SIZE))
-        .unwrap()
-}
-
-fn pthread_detach(env: &mut Environment, thread: pthread_t) -> i32 {
+fn pthread_setschedparam(
+    _env: &mut Environment,
+    thread: pthread_t,
+    policy: i32,
+    param: ConstVoidPtr,
+) -> i32 {
+    log_dbg!(
+        "TODO: pthread_setschedparam({:?}, {}, {:?})",
+        thread,
+        policy,
+        param
+    );
     0
 }
 
@@ -331,12 +332,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_mach_thread_np(_)),
     export_c_func!(pthread_getschedparam(_, _, _)),
     export_c_func!(pthread_setschedparam(_, _, _)),
-    export_c_func!(pthread_attr_setschedparam(_, _, _)),
-    export_c_func!(pthread_get_stackaddr_np(_)),
-    export_c_func!(pthread_attr_getstacksize(_, _)),
-    export_c_func!(pthread_attr_setstacksize(_, _)),
-    export_c_func!(pthread_get_stacksize_np(_)),
-    export_c_func!(pthread_detach(_)),
 ];
 
 pub fn _get_thread_id(env: &mut Environment, pthread: pthread_t) -> Option<ThreadId> {

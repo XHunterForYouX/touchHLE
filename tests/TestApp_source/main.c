@@ -94,11 +94,15 @@ int close(int);
 typedef struct opaque_pthread_t opaque_pthread_t;
 typedef struct opaque_pthread_t *__pthread_t;
 typedef __pthread_t pthread_t;
+
 typedef struct opaque_pthread_attr_t opaque_pthread_attr_t;
 typedef struct opaque_pthread_attr_t *__pthread_attr_t;
 typedef __pthread_attr_t pthread_attr_t;
 
-struct _opaque_pthread_mutex_t { long __sig; char __opaque[40]; };
+struct _opaque_pthread_mutex_t {
+  long __sig;
+  char __opaque[40];
+};
 typedef struct _opaque_pthread_mutex_t __pthread_mutex_t;
 typedef __pthread_mutex_t pthread_mutex_t;
 
@@ -786,6 +790,42 @@ int test_cond_var() {
   return 0;
 }
 
+int done = 0;
+pthread_mutex_t m;
+pthread_cond_t c;
+
+void thr_exit() {
+  pthread_mutex_lock(&m);
+  done = 1;
+  pthread_cond_signal(&c);
+  pthread_mutex_unlock(&m);
+}
+
+void *child(void *arg) {
+  thr_exit();
+  return NULL;
+}
+
+void thr_join() {
+  pthread_mutex_lock(&m);
+  while (done == 0) {
+    pthread_cond_wait(&c, &m);
+  }
+  pthread_mutex_unlock(&m);
+}
+
+int test_cond_var() {
+  pthread_t p;
+
+  pthread_mutex_init(&m, NULL);
+  pthread_cond_init(&c, NULL);
+
+  pthread_create(&p, NULL, child, NULL);
+  thr_join();
+
+  return done == 1 ? 0 : -1;
+}
+
 int test_strncpy() {
   char *src = "test\0abcd";
   char dst[10];
@@ -1108,6 +1148,30 @@ int test_fwrite() {
   return 0;
 }
 
+int test_open() {
+  int fd;
+  // Test opening directories
+  fd = open("/usr", O_RDONLY);
+  if (fd == -1) {
+    return -1;
+  }
+  close(fd);
+
+  fd = open("/usr", O_WRONLY);
+  if (fd != -1) {
+    close(fd);
+    return -2;
+  }
+
+  fd = open("/usr", O_RDWR);
+  if (fd != -1) {
+    close(fd);
+    return -3;
+  }
+
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -1143,6 +1207,8 @@ struct {
     FUNC_DEF(test_mbstowcs),
     FUNC_DEF(test_CFMutableString),
     FUNC_DEF(test_fwrite),
+    FUNC_DEF(test_open),
+    FUNC_DEF(test_cond_var),
 };
 // clang-format on
 

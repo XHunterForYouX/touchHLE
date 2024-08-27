@@ -5,12 +5,12 @@
  */
 //! Conditional variables.
 
-use std::collections::HashMap;
 use super::mutex::pthread_mutex_t;
 use crate::dyld::FunctionExports;
-use crate::{Environment, export_c_func};
 use crate::libc::pthread::mutex::pthread_mutex_unlock;
 use crate::mem::{ConstPtr, MutPtr, SafeRead};
+use crate::{export_c_func, Environment};
+use std::collections::HashMap;
 
 use crate::environment::ThreadBlock;
 
@@ -20,7 +20,7 @@ unsafe impl SafeRead for pthread_condattr_t {}
 
 #[repr(C, packed)]
 pub struct OpaqueCond {
-    _unused: i32
+    _unused: i32,
 }
 unsafe impl SafeRead for OpaqueCond {}
 
@@ -41,27 +41,32 @@ impl State {
 }
 
 pub struct CondHostObject {
-    pub done: bool
+    pub done: bool,
 }
 
-fn pthread_cond_init(env: &mut Environment, cond: MutPtr<pthread_cond_t>, attr: ConstPtr<pthread_condattr_t>) -> i32 {
+fn pthread_cond_init(
+    env: &mut Environment,
+    cond: MutPtr<pthread_cond_t>,
+    attr: ConstPtr<pthread_condattr_t>,
+) -> i32 {
     assert!(attr.is_null());
     let opaque = env.mem.alloc_and_write(OpaqueCond { _unused: 0 });
     env.mem.write(cond, opaque);
 
     assert!(!State::get(env).condition_variables.contains_key(&opaque));
-    State::get_mut(env).condition_variables.insert(
-        opaque,
-        CondHostObject {
-            done: false
-        },
-    );
+    State::get_mut(env)
+        .condition_variables
+        .insert(opaque, CondHostObject { done: false });
     0 // success
 }
 
-fn pthread_cond_wait(env: &mut Environment, cond: MutPtr<pthread_cond_t>, mutex: MutPtr<pthread_mutex_t>) -> i32 {
+fn pthread_cond_wait(
+    env: &mut Environment,
+    cond: MutPtr<pthread_cond_t>,
+    mutex: MutPtr<pthread_mutex_t>,
+) -> i32 {
     let res = pthread_mutex_unlock(env, mutex);
-    //assert_eq!(res, 0);
+    assert_eq!(res, 0);
     assert!(matches!(
         env.threads[env.current_thread].blocked_by,
         ThreadBlock::NotBlocked
@@ -73,7 +78,7 @@ fn pthread_cond_wait(env: &mut Environment, cond: MutPtr<pthread_cond_t>, mutex:
     );
     let cond_var = env.mem.read(cond);
     env.threads[env.current_thread].blocked_by = ThreadBlock::Condition(cond_var);
-    //assert!(!State::get(env).mutexes.contains_key(&cond_var));
+    assert!(!State::get(env).mutexes.contains_key(&cond_var));
     let mutex_val = env.mem.read(mutex);
     State::get_mut(env).mutexes.insert(cond_var, mutex_val);
     0 // success
@@ -86,7 +91,11 @@ fn pthread_cond_signal(env: &mut Environment, cond: MutPtr<pthread_cond_t>) -> i
         env.current_thread,
         cond
     );
-    State::get_mut(env).condition_variables.get_mut(&cond_var).unwrap().done = true;
+    State::get_mut(env)
+        .condition_variables
+        .get_mut(&cond_var)
+        .unwrap()
+        .done = true;
     0 // success
 }
 
@@ -98,14 +107,9 @@ fn pthread_cond_destroy(env: &mut Environment, cond: MutPtr<pthread_cond_t>) -> 
     0 // success
 }
 
-fn pthread_cond_broadcast(env: &mut Environment, cond: MutPtr<pthread_cond_t>) -> i32 {
-    pthread_cond_signal(env, cond)
-}
-
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_cond_init(_, _)),
     export_c_func!(pthread_cond_wait(_, _)),
     export_c_func!(pthread_cond_signal(_)),
     export_c_func!(pthread_cond_destroy(_)),
-    export_c_func!(pthread_cond_broadcast(_)),
 ];

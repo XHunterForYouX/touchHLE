@@ -154,7 +154,6 @@ const GET_PARAMS: ParamTable = ParamTable(&[
     (gl21::COLOR_LOGIC_OP, ParamType::Boolean, 1),
     (gl21::COLOR_MATERIAL, ParamType::Boolean, 1),
     (gl21::COLOR_WRITEMASK, ParamType::Boolean, 4),
-    // TODO: COMPRESSED_TEXTURE_FORMATS (need to support PVRTC etc)
     (gl21::CULL_FACE, ParamType::Boolean, 1),
     (gl21::CULL_FACE_MODE, ParamType::Int, 1),
     (gl21::CURRENT_COLOR, ParamType::FloatSpecial, 4), // TODO correct type
@@ -213,7 +212,6 @@ const GET_PARAMS: ParamTable = ParamTable(&[
     (gl21::NORMAL_ARRAY_STRIDE, ParamType::Int, 1),
     (gl21::NORMAL_ARRAY_TYPE, ParamType::Int, 1),
     (gl21::NORMALIZE, ParamType::Boolean, 1),
-    // TODO: NUM_COMPRESSED_TEXTURE_FORMATS (need to support PVRTC etc)
     (gl21::PACK_ALIGNMENT, ParamType::Int, 1),
     (gl21::PERSPECTIVE_CORRECTION_HINT, ParamType::Int, 1),
     (gl21::POINT_DISTANCE_ATTENUATION, ParamType::Float, 3),
@@ -318,7 +316,7 @@ const LIGHT_PARAMS: ParamTable = ParamTable(&[
 
 const LIGHT_MODEL_PARAMS: ParamTable = ParamTable(&[
     (gl21::LIGHT_MODEL_AMBIENT, ParamType::Float, 4),
-    (gl21::LIGHT_MODEL_TWO_SIDE, ParamType::Float, 1),
+    (gl21::LIGHT_MODEL_TWO_SIDE, ParamType::Boolean, 1),
 ]);
 
 /// Table of `glMaterial` parameters shared by OpenGL ES 1.1 and OpenGL 2.1.
@@ -425,7 +423,10 @@ impl GLES1OnGL2 {
 
             let mut buffer_binding = 0;
             gl21::GetIntegerv(array_info.buffer_binding, &mut buffer_binding);
-            // TODO: translation for bound array buffers
+            if buffer_binding != 0 {
+                // TODO: translation for bound array buffers
+                todo!("TODO: GLES1-on-GL2 layer does not support buffer bindings yet. (Try OpenGL ES on Android.)");
+            }
             assert!(buffer_binding == 0);
 
             // Get and back up data
@@ -590,6 +591,8 @@ impl GLES for GLES1OnGL2 {
     unsafe fn Enable(&mut self, cap: GLenum) {
         if ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == cap) {
             log_dbg!("Tolerating glEnable({:#x}) of client state", cap);
+        } else if cap == gl21::PERSPECTIVE_CORRECTION_HINT || cap == gl21::SMOOTH {
+            log_dbg!("Tolerating glEnable({:#x})", cap);
         } else {
             assert!(CAPABILITIES.contains(&cap));
         }
@@ -925,7 +928,7 @@ impl GLES for GLES1OnGL2 {
     unsafe fn LightModelx(&mut self, pname: GLenum, param: GLfixed) {
         LIGHT_MODEL_PARAMS.setx(
             |param| gl21::LightModelf(pname, param),
-            |_| unreachable!(),
+            |param| gl21::LightModeli(pname, param),
             pname,
             param,
         )
@@ -937,7 +940,7 @@ impl GLES for GLES1OnGL2 {
     unsafe fn LightModelxv(&mut self, pname: GLenum, params: *const GLfixed) {
         LIGHT_MODEL_PARAMS.setxv(
             |param| gl21::LightModelfv(pname, param),
-            |_| unreachable!(),
+            |param| gl21::LightModeliv(pname, param),
             pname,
             params,
         )
@@ -1150,58 +1153,63 @@ impl GLES for GLES1OnGL2 {
         .contains(&mode));
         assert!(type_ == gl21::UNSIGNED_BYTE || type_ == gl21::UNSIGNED_SHORT);
 
-        let fixed_point_arrays_state_backup =
-            if self.pointer_is_fixed_point.iter().any(|&is_fixed| is_fixed) {
-                // Scan the index buffer to find the range of data that may need
-                // fixed-point translation.
-                // TODO: Would it be more efficient to turn this into a
-                // non-indexed draw-call instead?
+        let fixed_point_arrays_state_backup = if self
+            .pointer_is_fixed_point
+            .iter()
+            .any(|&is_fixed| is_fixed)
+        {
+            // Scan the index buffer to find the range of data that may need
+            // fixed-point translation.
+            // TODO: Would it be more efficient to turn this into a
+            // non-indexed draw-call instead?
 
-                let mut index_buffer_binding = 0;
-                gl21::GetIntegerv(
-                    gl21::ELEMENT_ARRAY_BUFFER_BINDING,
-                    &mut index_buffer_binding,
-                );
-                // TODO: handling of bound index array buffers
-                assert!(index_buffer_binding == 0);
+            let mut index_buffer_binding = 0;
+            gl21::GetIntegerv(
+                gl21::ELEMENT_ARRAY_BUFFER_BINDING,
+                &mut index_buffer_binding,
+            );
+            if index_buffer_binding != 0 {
+                // TODO: translation for bound index array buffers
+                todo!("TODO: GLES1-on-GL2 layer does not support buffer bindings yet. (Try OpenGL ES on Android.)");
+            }
 
-                let mut first = usize::MAX;
-                let mut last = usize::MIN;
-                assert!(count >= 0);
-                match type_ {
-                    gl21::UNSIGNED_BYTE => {
-                        let indices_ptr: *const GLubyte = indices.cast();
-                        for i in 0..(count as usize) {
-                            let index = indices_ptr.add(i).read_unaligned();
-                            first = first.min(index as usize);
-                            last = last.max(index as usize);
-                        }
+            let mut first = usize::MAX;
+            let mut last = usize::MIN;
+            assert!(count >= 0);
+            match type_ {
+                gl21::UNSIGNED_BYTE => {
+                    let indices_ptr: *const GLubyte = indices.cast();
+                    for i in 0..(count as usize) {
+                        let index = indices_ptr.add(i).read_unaligned();
+                        first = first.min(index as usize);
+                        last = last.max(index as usize);
                     }
-                    gl21::UNSIGNED_SHORT => {
-                        let indices_ptr: *const GLushort = indices.cast();
-                        for i in 0..(count as usize) {
-                            let index = indices_ptr.add(i).read_unaligned();
-                            first = first.min(index as usize);
-                            last = last.max(index as usize);
-                        }
-                    }
-                    _ => unreachable!(),
                 }
+                gl21::UNSIGNED_SHORT => {
+                    let indices_ptr: *const GLushort = indices.cast();
+                    for i in 0..(count as usize) {
+                        let index = indices_ptr.add(i).read_unaligned();
+                        first = first.min(index as usize);
+                        last = last.max(index as usize);
+                    }
+                }
+                _ => unreachable!(),
+            }
 
-                let (first, count) = if first == usize::MAX && last == usize::MIN {
-                    assert!(count == 0);
-                    (0, 0)
-                } else {
-                    (
-                        first.try_into().unwrap(),
-                        (last + 1 - first).try_into().unwrap(),
-                    )
-                };
-
-                Some(self.translate_fixed_point_arrays(first, count))
+            let (first, count) = if first == usize::MAX && last == usize::MIN {
+                assert!(count == 0);
+                (0, 0)
             } else {
-                None
+                (
+                    first.try_into().unwrap(),
+                    (last + 1 - first).try_into().unwrap(),
+                )
             };
+
+            Some(self.translate_fixed_point_arrays(first, count))
+        } else {
+            None
+        };
 
         gl21::DrawElements(mode, count, type_, indices);
 

@@ -12,6 +12,7 @@ pub mod ui_alert_view;
 pub mod ui_control;
 pub mod ui_image_view;
 pub mod ui_label;
+pub mod ui_scroll_view;
 pub mod ui_window;
 
 use super::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
@@ -194,6 +195,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)superview {
     env.objc.borrow::<UIViewHostObject>(this).superview
+}
+
+- (id)window {
+    // Looks up window in the superview hierarchy
+    // TODO: cache the result somehow?
+    let mut window: id = env.objc.borrow::<UIViewHostObject>(this).superview;
+    let window_class = env.objc.get_known_class("UIWindow", &mut env.mem);
+    while window != nil {
+        let current_class: Class = msg![env; window class];
+        log_dbg!("maybe window {:?} curr class {}", window, env.objc.get_class_name(current_class));
+        if env.objc.class_is_subclass_of(current_class, window_class) {
+            break;
+        }
+        window = env.objc.borrow::<UIViewHostObject>(window).superview;
+    }
+    log_dbg!("view {:?} has window {:?}", this, window);
+    window
 }
 
 - (id)subviews {
@@ -469,7 +487,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGPoint)convertPoint:(CGPoint)point
                fromView:(id)other { // UIView*
-    assert!(other != nil); // TODO
+    if other == nil {
+        let window: id = msg![env; this window];
+        assert!(window != nil);
+        // TODO: also assert that window is a key one?
+        return msg![env; this convertPoint:point fromView:window]
+    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
     let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
     msg![env; this_layer convertPoint:point fromLayer:other_layer]
@@ -477,7 +500,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGPoint)convertPoint:(CGPoint)point
                  toView:(id)other { // UIView*
-    assert!(other != nil); // TODO
+    if other == nil {
+        let window: id = msg![env; this window];
+        assert!(window != nil);
+        // TODO: also assert that window is a key one?
+        return msg![env; this convertPoint:point toView:window]
+    }
     let this_layer = env.objc.borrow::<UIViewHostObject>(this).layer;
     let other_layer = env.objc.borrow::<UIViewHostObject>(other).layer;
     msg![env; this_layer convertPoint:point toLayer:other_layer]
