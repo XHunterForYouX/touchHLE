@@ -22,6 +22,9 @@ use crate::mem::{MutPtr, MutVoidPtr};
 // TODO: These should also have `long double` variants, which can probably just
 // alias the `double` ones.
 
+fn abs(_env: &mut Environment, arg: i32) -> i32 {
+    arg.abs()
+}
 fn sin(env: &mut Environment, arg: f64) -> f64 {
     // TODO: handle errno properly
     set_errno(env, 0);
@@ -731,6 +734,7 @@ fn fesetround(_env: &mut Environment, round: i32) {
 }
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(abs(_)),
     // Trigonometric functions
     export_c_func!(sin(_)),
     export_c_func!(sinf(_)),
