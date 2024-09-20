@@ -238,9 +238,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; _touchHLE_NSMutableArray allocWithZone:zone]
 }
 
-+ (id)arrayWithCapacity:(NSUInteger)cap {
-    let new = msg![env; this alloc];
-    let new = msg![env; new initWithCapacity:cap];
++ (id)arrayWithCapacity:(NSUInteger)capacity {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithCapacity:capacity];
     autorelease(env, new)
 }
 
@@ -391,6 +391,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     assert!(host_object.array.is_empty());
     host_object.array = objects; // objects are already retained
     this
+}
+
+- (id)initWithCapacity:(NSUInteger)_capacity {
+    // TODO: capacity
+    msg![env; this init]
 }
 
 - (())dealloc {
