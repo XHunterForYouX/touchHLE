@@ -336,44 +336,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
 }
 
-// NSFastEnumeration implementation
-- (NSUInteger)countByEnumeratingWithState:(MutPtr<NSFastEnumerationState>)state
-                                  objects:(MutPtr<id>)stackbuf
-                                    count:(NSUInteger)len {
-    let host_object = env.objc.borrow::<ArrayHostObject>(this);
-
-    if host_object.array.len() == 0 {
-        return 0;
-    }
-
-    // TODO: handle size > 1
-    assert!(host_object.array.len() == 1);
-    assert!(len >= host_object.array.len().try_into().unwrap());
-
-    let NSFastEnumerationState {
-        state: is_first_round,
-        ..
-    } = env.mem.read(state);
-
-    match is_first_round {
-        0 => {
-            let object = host_object.array.iter().next().unwrap();
-            env.mem.write(stackbuf, *object);
-            env.mem.write(state, NSFastEnumerationState {
-                state: 1,
-                items_ptr: stackbuf,
-                // can be anything as long as it's dereferenceable and the same
-                // each iteration
-                mutations_ptr: stackbuf.cast(),
-                extra: Default::default(),
-            });
-            1 // returned object count
-        },
-        1 => {
-            0 // end of iteration
-        },
-        _ => panic!(), // app failed to initialize the buffer?
-    }
+- (id)description {
+    build_description(env, this)
 }
 
 @end
@@ -437,6 +401,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)objectAtIndex:(NSUInteger)index {
     // TODO: throw real exception rather than panic if out-of-bounds?
     env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+}
+
+- (id)description {
+    build_description(env, this)
 }
 
 // TODO: more mutation methods
@@ -548,19 +516,28 @@ pub fn from_vec(env: &mut Environment, objects: Vec<id>) -> id {
     array
 }
 
-pub fn to_vec(env: &mut Environment, array: id) -> Vec<id> {
-    env.objc.borrow::<ArrayHostObject>(array).array.clone()
-}
-
-fn from_va_args(env: &mut Environment, array: id, first: id, rest: DotDotDot) {
-    let mut va_args = rest.start();
-    let mut v = vec![retain(env, first)];
-    loop {
-        let obj = va_args.next(env);
-        if obj == nil {
-            break;
-        }
-        v.push(retain(env, obj));
+/// A helper to build a description NSString
+/// for a NSArray or a NSMutableArray.
+fn build_description(env: &mut Environment, arr: id) -> id {
+    // According to docs, this description should be formatted as property list.
+    // But by the same docs, it's meant to be used for debugging purposes only.
+    let desc: id = msg_class![env; NSMutableString new];
+    let prefix: id = ns_string::from_rust_string(env, "(\n".to_string());
+    () = msg![env; desc appendString:prefix];
+    release(env, prefix);
+    let values: Vec<id> = env.objc.borrow_mut::<ArrayHostObject>(arr).array.clone();
+    for value in values {
+        let value_desc: id = msg![env; value description];
+        // TODO: respect nesting and padding
+        let format = format!("\t{},\n", ns_string::to_rust_string(env, value_desc));
+        let format = ns_string::from_rust_string(env, format);
+        () = msg![env; desc appendString:format];
+        release(env, format);
     }
-    env.objc.borrow_mut::<ArrayHostObject>(array).array = v;
+    let suffix: id = ns_string::from_rust_string(env, ")".to_string());
+    () = msg![env; desc appendString:suffix];
+    release(env, suffix);
+    let desc_imm = msg![env; desc copy];
+    release(env, desc);
+    autorelease(env, desc_imm)
 }
