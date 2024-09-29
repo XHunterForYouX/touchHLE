@@ -12,16 +12,19 @@
 //! depending on the value of `pname`, using the upper bound (4 in this case)
 //! every time is never going to cause a problem in practice.
 
-use touchHLE_gl_bindings::gles11::WRITE_ONLY_OES;
+use touchHLE_gl_bindings::gles11::{
+    ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER_BINDING, VERTEX_ARRAY_BUFFER_BINDING,
+    WRITE_ONLY_OES,
+};
 
 use crate::dyld::{export_c_func, FunctionExports};
+use crate::frameworks::opengles::eagl::EAGLContextHostObject;
 use crate::gles::gles11_raw as gles11; // constants only
 use crate::gles::GLES;
-use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, Ptr};
+use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::nil;
 use crate::Environment;
 
-use std::ffi::c_void;
 use std::slice::from_raw_parts;
 
 // These types are the same size in guest code (32-bit) and host code (64-bit).
@@ -1246,12 +1249,9 @@ fn glMapBufferOES(env: &mut Environment, target: GLenum, access: GLenum) -> MutP
     // target buffer.
     // Since the mapped buffer can't be used until it's unmapped, we defer the
     // "forwarding" of read/writes until the moment the buffer is unmapped.
+    assert!(matches!(target, ARRAY_BUFFER | ELEMENT_ARRAY_BUFFER));
     assert!(access == WRITE_ONLY_OES);
-    assert!(!env
-        .framework_state
-        .opengles
-        .mapped_buffers
-        .contains_key(&target));
+    let buffer_object_name = _get_currently_bound_buffer_object_name(env, target);
     let host_buffer = with_ctx_and_mem(env, |gles, _mem| unsafe {
         gles.MapBufferOES(target, access)
     });
@@ -1259,17 +1259,26 @@ fn glMapBufferOES(env: &mut Environment, target: GLenum, access: GLenum) -> MutP
         nil.cast()
     } else {
         let buffer_size = _get_buffer_size(env, target) as u32;
-        let guest_buffer: MutPtr<c_void> = env.mem.alloc(buffer_size).cast();
+        let guest_buffer: MutVoidPtr = env.mem.alloc(buffer_size).cast();
         // Copy host buffer to guest buffer
         unsafe {
             env.mem
                 .bytes_at_mut(guest_buffer.cast(), buffer_size)
                 .copy_from_slice(from_raw_parts(host_buffer as *mut u8, buffer_size as usize));
         }
-        env.framework_state
+
+        let current_ctx = env
+            .framework_state
             .opengles
+            .current_ctx_for_thread(env.current_thread);
+        let current_ctx_host_object = env
+            .objc
+            .borrow_mut::<EAGLContextHostObject>(current_ctx.unwrap());
+        assert!(current_ctx_host_object
             .mapped_buffers
-            .insert(target, (guest_buffer, host_buffer));
+            .insert(buffer_object_name, (guest_buffer, host_buffer))
+            .is_none());
+
         guest_buffer
     }
 }
@@ -1284,14 +1293,25 @@ fn glUnmapBufferOES(env: &mut Environment, target: GLenum) -> GLboolean {
     // Since the mapped buffer can't be used until it's unmapped, we defer the
     // "forwarding" of read/writes until the moment the buffer is unmapped.
     // The guest buffer is deallocated here
-    let buffer_size = _get_buffer_size(env, target) as u32;
-    if let Some((guest_buffer, host_buffer)) =
-        env.framework_state.opengles.mapped_buffers.remove(&target)
+    let buffer_object_name = _get_currently_bound_buffer_object_name(env, target);
+
+    let current_ctx = env
+        .framework_state
+        .opengles
+        .current_ctx_for_thread(env.current_thread);
+    let current_ctx_host_object = env
+        .objc
+        .borrow_mut::<EAGLContextHostObject>(current_ctx.unwrap());
+
+    if let Some((guest_buffer, host_buffer)) = current_ctx_host_object
+        .mapped_buffers
+        .remove(&buffer_object_name)
     {
+        let buffer_size = _get_buffer_size(env, target) as u32;
         // Copy guest buffer to host buffer
         unsafe {
             host_buffer.copy_from(
-                env.mem.bytes_at(guest_buffer.cast(), buffer_size).as_ptr() as *mut c_void,
+                env.mem.bytes_at(guest_buffer.cast(), buffer_size).as_ptr() as *mut GLvoid,
                 buffer_size as usize,
             );
         }
@@ -1487,6 +1507,19 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glMapBufferOES(_, _)),
     export_c_func!(glUnmapBufferOES(_)),
 ];
+
+fn _get_currently_bound_buffer_object_name(env: &mut Environment, target: GLenum) -> GLuint {
+    with_ctx_and_mem(env, |gles, _mem| unsafe {
+        let pname = match target {
+            ARRAY_BUFFER => VERTEX_ARRAY_BUFFER_BINDING,
+            ELEMENT_ARRAY_BUFFER => ELEMENT_ARRAY_BUFFER_BINDING,
+            _ => panic!(),
+        };
+        let currently_bound_buffer_name: GLuint = 0;
+        gles.GetIntegerv(pname, &mut (currently_bound_buffer_name as GLint));
+        currently_bound_buffer_name
+    })
+}
 
 fn _get_buffer_size(env: &mut Environment, target: GLenum) -> GLint {
     with_ctx_and_mem(env, |gles, _mem| {

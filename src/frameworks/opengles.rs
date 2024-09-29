@@ -12,12 +12,10 @@
 pub mod eagl;
 mod gles_guest;
 
-use std::ops::DerefMut;
-use std::ffi::c_void;
-
-use crate::mem::{ConstPtr, MutPtr};
 pub use gles_guest::FUNCTIONS;
 use touchHLE_gl_bindings::gles11::types::{GLenum, GLvoid};
+
+use crate::mem::ConstPtr;
 
 #[derive(Default)]
 pub struct State {
