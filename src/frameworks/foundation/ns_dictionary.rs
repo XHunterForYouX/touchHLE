@@ -5,14 +5,16 @@
  */
 //! The `NSDictionary` class cluster, including `NSMutableDictionary`.
 
-use super::ns_property_list_serialization::deserialize_plist_from_file;
-use super::{ns_array, ns_string, ns_url, NSInteger, NSUInteger};
+use super::ns_property_list_serialization::{
+    deserialize_plist_from_file, NSPropertyListBinaryFormat_v1_0,
+};
+use super::{ns_string, ns_url, NSUInteger};
 use crate::abi::VaList;
 use crate::frameworks::foundation::ns_array::from_vec;
 use crate::frameworks::foundation::ns_property_list_serialization::NSPropertyListXMLFormat_v1_0;
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::fs::GuestPath;
-use crate::mem::MutPtr;
+use crate::mem::{MutPtr, Ptr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
@@ -420,14 +422,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     build_description(env, this)
 }
 
-// FIXME: those are from NSUserDefaults!
-- (NSInteger)integerForKey:(id)defaultName {
-    let val: id = msg![env; this objectForKey:defaultName];
-    msg![env; val integerValue]
-}
-- (bool)boolForKey:(id)defaultName {
-    let val: id = msg![env; this objectForKey:defaultName];
-    msg![env; val boolValue]
+- (bool)writeToFile:(id)path // NSString*
+         atomically:(bool)atomically {
+    let file_path = to_rust_string(env, path);
+    let error_desc: MutPtr<id> = Ptr::null();
+    let data: id = msg_class![env; NSPropertyListSerialization
+            dataFromPropertyList:this
+                          format:NSPropertyListBinaryFormat_v1_0
+                errorDescription:error_desc];
+    let res = msg![env; data writeToFile:path atomically:atomically];
+    log_dbg!("[(NSDictionary *){:?} writeToFile:{:?} atomically:_] -> {}", this, file_path, res);
+    res
 }
 
 @end
