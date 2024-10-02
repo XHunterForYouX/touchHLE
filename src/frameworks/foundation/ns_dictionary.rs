@@ -213,62 +213,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, this)
 }
 
-- (id)mutableCopy{
-    let ko = dict_to_keys_and_objects(env, this);
-    dict_from_keys_and_objects(env, &ko)
-}
-    
-- (id)allKeys {
-    let keys = env.objc.borrow::<DictionaryHostObject>(this).iter_keys().collect::<Vec<_>>();
-    for key in &keys {
-        retain(env, *key);
-    }
-    let ns_keys = from_vec(env, keys);
-    autorelease(env, ns_keys)
+- (bool)writeToFile:(id)path // NSString*
+         atomically:(bool)atomically {
+    let error_desc: MutPtr<id> = Ptr::null();
+    let data: id = msg_class![env; NSPropertyListSerialization
+            dataFromPropertyList:this
+                          format:NSPropertyListBinaryFormat_v1_0
+                errorDescription:error_desc];
+    let res = msg![env; data writeToFile:path atomically:atomically];
+    log_dbg!(
+        "[(NSDictionary *){:?} writeToFile:{:?} atomically:{}] -> {}",
+        this,
+        to_rust_string(env, path),
+        atomically,
+        res
+    );
+    res
 }
 
-- (id)fileSize {
-    let key = get_static_str(env, "NSFileSize");
-    msg![env; this objectForKey:key]
-}
-
-// FIXME: those are from NSUserDefaults!
-- (())setObject:(id)anObject
-         forKey:(id)key { // NSString*
-    assert!(!anObject.is_null());
-    assert!(anObject != nil);
-    assert!(!key.is_null());
-    assert!(key != nil);
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    host_obj.insert(env, key, anObject, false);
-    *env.objc.borrow_mut(this) = host_obj;
-}
-- (())setInteger:(NSInteger)value forKey:(id)defaultName {
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    let value_id: id = msg_class![env; NSNumber numberWithInteger:value];
-    host_obj.insert(env, defaultName, value_id, false);
-    *env.objc.borrow_mut(this) = host_obj;
-}
-- (())setDouble:(f64)value forKey:(id)defaultName {
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    // TODO: do not down cast
-    let float: f32 = value as f32;
-    let value_id: id = msg_class![env; NSNumber numberWithFloat:float];
-    host_obj.insert(env, defaultName, value_id, false);
-    *env.objc.borrow_mut(this) = host_obj;
-}
-- (())setFloat:(f32)value forKey:(id)defaultName {
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    let value_id: id = msg_class![env; NSNumber numberWithFloat:value];
-    host_obj.insert(env, defaultName, value_id, false);
-    *env.objc.borrow_mut(this) = host_obj;
-}
-- (())removeObjectForKey:(id)defaultName {
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    host_obj.remove(env, defaultName);
-    *env.objc.borrow_mut(this) = host_obj;
-}
-    
 // TODO
 
 - (id)valueForKey:(id)key { // NSString*
@@ -420,19 +382,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     
 - (id)description {
     build_description(env, this)
-}
-
-- (bool)writeToFile:(id)path // NSString*
-         atomically:(bool)atomically {
-    let file_path = to_rust_string(env, path);
-    let error_desc: MutPtr<id> = Ptr::null();
-    let data: id = msg_class![env; NSPropertyListSerialization
-            dataFromPropertyList:this
-                          format:NSPropertyListBinaryFormat_v1_0
-                errorDescription:error_desc];
-    let res = msg![env; data writeToFile:path atomically:atomically];
-    log_dbg!("[(NSDictionary *){:?} writeToFile:{:?} atomically:_] -> {}", this, file_path, res);
-    res
 }
 
 @end
