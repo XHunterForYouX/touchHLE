@@ -58,9 +58,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)dataWithContentsOfMappedFile:(id)path {
-    log!("TODO [NSData dataWithContentsOfMappedFile:{:?}] uses [NSData dataWithContentsOfFile:] implementation instead of its own", path);
     let new: id = msg![env; this alloc];
-    let new: id = msg![env; new initWithContentsOfFile:path];
+    let new: id = msg![env; new initWithContentsOfMappedFile:path];
     autorelease(env, new)
 }
 
@@ -134,18 +133,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithContentsOfMappedFile:(id)path {
-    // IMM?: This is ok, right?
+    log_dbg!("[NSData initWithContentsOfMappedFile:] not using memory mapping");
     msg![env; this initWithContentsOfFile:path]
-}
-
-- (bool)writeToFile:(id)path // NSString*
-            options:(NSUInteger)_options_mask
-              error:(MutPtr<id>)error { // NSError**
-    let success: bool = msg![env; this writeToFile:path atomically:true];
-    if !success && !error.is_null() {
-        todo!(); // TODO: create an NSError if requested
-    }
-    success
 }
 
 // FIXME: writes should be atomic
