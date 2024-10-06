@@ -207,12 +207,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     deserialize_plist_from_file(env, &path, /* array_expected: */ false)
 }
 
-// NSCopying implementation
-- (id)copyWithZone:(NSZonePtr)_zone {
-    // TODO: override this once we have NSMutableDictionary!
-    retain(env, this)
-}
-
 - (bool)writeToFile:(id)path // NSString*
          atomically:(bool)atomically {
     let error_desc: MutPtr<id> = Ptr::null();
@@ -261,26 +255,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithCapacity:capacity];
     autorelease(env, new)
-}
-
-// NSCopying implementation
-- (id)copyWithZone:(NSZonePtr)_zone {
-    let entries: Vec<_> =
-        env.objc.borrow_mut::<DictionaryHostObject>(this).map.values().flatten().copied().collect();
-    dict_from_keys_and_objects(env, &entries)
-}
-
-- (bool)writeToFile:(id)path
-         atomically:(bool)atomic {
-    let data = msg_class![env;
-        NSPropertyListSerialization dataFromPropertyList: this
-                                                  format: NSPropertyListXMLFormat_v1_0
-                                        errorDescription: (MutPtr::<id>::null())
-    ];
-    if data == nil {
-        return false;
-    }
-    msg![env; data writeToFile: path atomically: atomic]
 }
 
 @end
@@ -366,20 +340,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     res
 }
 
-- (NSInteger)fileSize {
-    let file_size_key = ns_string::get_static_str(env, "fileSize");
-    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    let res = host_obj.lookup(env, file_size_key);
-    *env.objc.borrow_mut(this) = host_obj;
-    msg![env; res intValue]
+// NSCopying implementation
+- (id)copyWithZone:(NSZonePtr)_zone {
+    retain(env, this)
 }
 
--(())setObject:(id)value forKey:(id)key {
-    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
-    host_obj.insert(env, key, value, true);
+// NSMutableCopying implementation
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    let mut_dict: id = msg_class![env; NSMutableDictionary alloc];
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    for (k, v) in host_obj.map.values().flatten() {
+        () = msg![env; mut_dict setObject:(*v) forKey:(*k)];
+    }
     *env.objc.borrow_mut(this) = host_obj;
+    mut_dict
 }
-    
+
 - (id)description {
     build_description(env, this)
 }
@@ -438,10 +414,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     res
 }
 
-- (())setBool:(bool)value
-       forKey:(id)key { // NSString*
-    let num: id = msg_class![env; NSNumber numberWithBool:value];
-    msg![env; this setObject:num forKey:key]
+// NSCopying implementation
+- (id)copyWithZone:(NSZonePtr)_zone {
+    let entries: Vec<_> =
+        env.objc.borrow_mut::<DictionaryHostObject>(this).map.values().flatten().copied().collect();
+    dict_from_keys_and_objects(env, &entries)
+}
+
+// NSMutableCopying implementation
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    let mut_dict: id = msg_class![env; NSMutableDictionary alloc];
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    for (k, v) in host_obj.map.values().flatten() {
+        () = msg![env; mut_dict setObject:(*v) forKey:(*k)];
+    }
+    *env.objc.borrow_mut(this) = host_obj;
+    mut_dict
 }
 
 - (())setObject:(id)object
@@ -453,6 +441,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
     host_obj.insert(env, key, object, /* copy_key: */ true);
     *env.objc.borrow_mut(this) = host_obj;
+}
+
+- (())addEntriesFromDictionary:(id)other { // NSDictionary *
+    let host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other));
+    for (k, v) in host_obj.map.values().flatten() {
+        () = msg![env; this setObject:(*v) forKey:(*k)];
+    }
+    *env.objc.borrow_mut(other) = host_obj;
 }
 
 - (id)description {
