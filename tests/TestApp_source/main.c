@@ -180,6 +180,7 @@ int swscanf(const wchar_t *, const wchar_t *, ...);
 
 // `CFBase.h`
 
+typedef const void *CFTypeRef;
 typedef const struct _CFAllocator *CFAllocatorRef;
 typedef unsigned int CFStringEncoding;
 typedef signed long CFIndex;
@@ -191,6 +192,8 @@ typedef unsigned long CFOptionFlags;
 typedef const struct _CFDictionary *CFDictionaryRef;
 typedef const struct _CFString *CFStringRef;
 typedef const struct _CFString *CFMutableStringRef;
+
+void CFRelease(CFTypeRef cf);
 
 // `CFString.h`
 
@@ -206,6 +209,26 @@ CFComparisonResult CFStringCompare(CFStringRef a, CFStringRef b,
                                    CFStringCompareFlags flags);
 CFRange CFStringFind(CFStringRef theString, CFStringRef stringToFind,
                      CFOptionFlags compareOptions);
+
+// `CFString.h`
+
+typedef const struct _CFDictionary *CFMutableDictionaryRef;
+
+CFMutableDictionaryRef CFDictionaryCreateMutable(
+    CFAllocatorRef allocator, CFIndex capacity,
+    const void *keyCallBacks,  // TODO: CFDictionaryKeyCallBacks
+    const void *valueCallBacks // TODO: CFDictionaryValueCallBacks
+);
+void CFDictionaryAddValue(CFMutableDictionaryRef dict, const void *key,
+                          const void *value);
+void CFDictionarySetValue(CFMutableDictionaryRef dict, const void *key,
+                          const void *value);
+void CFDictionaryRemoveValue(CFMutableDictionaryRef dict, const void *key);
+void CFDictionaryRemoveAllValues(CFMutableDictionaryRef dict);
+const void *CFDictionaryGetValue(CFDictionaryRef dict, const void *key);
+CFIndex CFDictionaryGetCount(CFDictionaryRef dict);
+void CFDictionaryGetKeysAndValues(CFDictionaryRef dict, const void **keys,
+                                  const void **values);
 
 // === Main code ===
 
@@ -1205,6 +1228,92 @@ int test_open() {
   return 0;
 }
 
+int test_CFMutableDictionary() {
+  CFMutableDictionaryRef dict = CFDictionaryCreateMutable(NULL, 0, NULL, NULL);
+  if (dict == NULL) {
+    return -1;
+  }
+
+  const char *key = "Key";
+  const char *value = "Value";
+  CFDictionaryAddValue(dict, key, value);
+  const void *retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != value) {
+    CFRelease(dict);
+    return -2;
+  }
+
+  const char *valueNew = "NewValue";
+  CFDictionaryAddValue(dict, key, valueNew);
+  retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != value) {
+    CFRelease(dict);
+    return -3;
+  }
+
+  CFDictionarySetValue(dict, key, NULL);
+  retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != NULL) {
+    CFRelease(dict);
+    return -4;
+  }
+
+  CFDictionarySetValue(dict, key, valueNew);
+  retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != valueNew) {
+    CFRelease(dict);
+    return -5;
+  }
+
+  CFDictionaryRemoveValue(dict, key);
+  retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != NULL) {
+    CFRelease(dict);
+    return -6;
+  }
+
+  CFDictionaryAddValue(dict, key, value);
+  retrievedValue = CFDictionaryGetValue(dict, key);
+  if (retrievedValue != value) {
+    CFRelease(dict);
+    return -7;
+  }
+
+  CFIndex count = CFDictionaryGetCount(dict);
+  if (count != 1) {
+    CFRelease(dict);
+    return -8;
+  }
+
+  const void **keys = malloc(sizeof(char *) * count);
+  const void **values = malloc(sizeof(char *) * count);
+  CFDictionaryGetKeysAndValues(dict, keys, values);
+  if (keys[0] != key || values[0] != value) {
+    free(keys);
+    free(values);
+    CFRelease(dict);
+    return -9;
+  }
+  free(keys);
+  free(values);
+
+  CFDictionaryRemoveAllValues(dict);
+  count = CFDictionaryGetCount(dict);
+  if (count != 0) {
+    CFRelease(dict);
+    return -10;
+  }
+
+  count = CFDictionaryGetCount(dict);
+  if (count != 0) {
+    CFRelease(dict);
+    return -11;
+  }
+
+  CFRelease(dict);
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -1243,6 +1352,7 @@ struct {
     FUNC_DEF(test_fwrite),
     FUNC_DEF(test_open),
     FUNC_DEF(test_cond_var),
+    FUNC_DEF(test_CFMutableDictionary),
 };
 // clang-format on
 
