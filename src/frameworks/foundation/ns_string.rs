@@ -804,25 +804,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     assert!(res_end >= res_start);
     let res_length = res_end - res_start;
 
-    let res = if res_length == initial_length {
-        retain(env, this)
+    if res_length == initial_length {
+        let ret = msg![env; this copy];
+        autorelease(env, ret)
     } else {
-        // TODO: just call `substringWithRange:` here instead, the only reason
-        // the current code doesn't is that it would require figuring out the
-        // ABI of NSRange.
-        let mut res_utf16: Utf16String = Vec::with_capacity(res_length as usize);
-
-        for_each_code_unit(env, this, |idx, c| {
-            if res_start <= idx && idx < res_end {
-                res_utf16.push(c);
-            }
-        });
-
-        let res = msg_class![env; _touchHLE_NSString alloc];
-        *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
-        res
-    };
-    autorelease(env, res)
+        let range = NSRange{ location: res_start, length: res_length };
+        let string: id = msg![env; this substringWithRange:range];
+        string
+    }
 }
 
 - (id)stringByReplacingOccurrencesOfString:(id)target // NSString*
@@ -1326,81 +1315,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSData dataWithBytesNoCopy:(c_string.cast_void()) length:length]
 }
 
-- (id)lengthOfBytesUsingEncoding:(NSStringEncoding)encoding {
-    assert!(encoding == NSUTF8StringEncoding || encoding == NSASCIIStringEncoding);
-
-    // TODO: refactor with UTF8String method
-    let string = to_rust_string(env, this);
-    let c_string = env.mem.alloc_and_write_cstr(string.as_bytes());
-    let length: NSUInteger = (string.len() + 1).try_into().unwrap();
-
-    msg_class![env; NSData dataWithBytesNoCopy:(c_string.cast_void()) length:length]
-}
-
--(NSRange)lineRangeForRange:(NSRange)range {
-    // IMM: TEST edge cases !!!!!
+- (id)substringWithRange:(NSRange)range {
     let host_object = env.objc.borrow_mut::<StringHostObject>(this);
-    let (string, _) = host_object.convert_to_utf16_inplace();
-    // Matches simulator, NSRange { len, 0 } is valid.
-    assert!(range.location + range.length <= string.len() as u32);
-
-    // Go backwards from start to find beginning:
-    let mut idx = range.location.saturating_sub(1);
-    while idx != 0 {
-        match string[idx as usize] {
-            // These are all characters considered line seperators, see
-            // https://developer.apple.com/documentation/foundation/nsstring
-            // /1415111-getlinestart?language=objc
-            0x000A | 0x000D | 0x0085 | 0x2028 | 0x2029 => break,
-            _ => {}
-        }
-        idx -= 1;
+    let (orig_string, did_convert) = host_object.convert_to_utf16_inplace();
+    if did_convert {
+        log_dbg!("[{:?} length]: converted string to UTF-16", this);
     }
-    let range_start =
-        if idx != 0 || matches!(string[0], 0x000A | 0x000D | 0x0085 | 0x2028 | 0x2029) {
-            idx + 1
-        } else {
-            idx
-        };
-
-    // Go forwards from range end to find end:
-    let mut idx = range.location + range.length;
-    while (idx as usize) < string.len() {
-        match string[idx as usize] {
-            0x000A | 0x0085 | 0x2028 | 0x2029 => {
-                idx += 1;
-                break;
-            }
-            // CRLF is considered one "line seperator", but CR on it's
-            // own is also considered a line seperator.
-            0x000D => {
-                idx += 1;
-                if (idx as usize) < string.len() && string[idx as usize] == 0x000A {
-                    idx += 1;
-                }
-                break;
-            }
-            _ => {}
-        }
-        idx += 1;
-    }
-    let out = NSRange {
-        location: range_start,
-        length: idx - range_start,
-    };
-    out
-}
-
--(id) substringWithRange:(NSRange)range {
-    let host_object = env.objc.borrow_mut::<StringHostObject>(this);
-    let (orig_string, _) = host_object.convert_to_utf16_inplace();
     let host_string =
         orig_string[(range.location as usize)..((range.location + range.length) as usize)].to_vec();
-    // from_u16_slice is copied here to keep the borrow checker happy.
-    let string: id = msg_class![env; _touchHLE_NSString alloc];
-    let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
-    *host_object = StringHostObject::Utf16(host_string);
-    string
+    let res = from_u16_vec(env, host_string);
+    autorelease(env, res)
 }
 
 @end
@@ -1525,8 +1449,7 @@ pub fn from_rust_string(env: &mut Environment, from: String) -> id {
     string
 }
 
-/// Shortcut for host code, roughly equivalent to
-/// `[[NSString alloc] initWithUTF8String:]` in the proper API.
+/// Shortcut for host code, allocs and inits with the given u16 vec.
 pub fn from_u16_vec(env: &mut Environment, from: Vec<u16>) -> id {
     let string: id = msg_class![env; _touchHLE_NSString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
