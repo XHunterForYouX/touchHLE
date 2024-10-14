@@ -280,17 +280,36 @@ pub const CLASSES: ClassExports = objc_classes! {
             renderbuffer as _
         };
 
-        let &drawable = objc
-            .borrow::<EAGLContextHostObject>(this)
-            .renderbuffer_drawable_bindings
-            .get(&renderbuffer)
-            .expect("Can't present a renderbuffer not bound to a drawable!");
+    let Some(&drawable) = env
+        .objc
+        .borrow::<EAGLContextHostObject>(this)
+        .renderbuffer_drawable_bindings
+        .get(&renderbuffer) else {
+        log_dbg!("Can't present a renderbuffer {:?} not bound to a drawable!", renderbuffer);
+        return false;
+    };
 
-        // We're presenting to the opaque CAEAGLLayer that covers the screen.
-        // We can use the fast path where we skip composition and present directly.
-        if drawable == fullscreen_layer {
-            log_dbg!(
-                "Layer {:?} is the fullscreen layer, presenting renderbuffer {:?} directly (fast path).",
+    // We're presenting to the opaque CAEAGLLayer that covers the screen.
+    // We can use the fast path where we skip composition and present directly.
+    if drawable == fullscreen_layer {
+        log_dbg!(
+            "Layer {:?} is the fullscreen layer, presenting renderbuffer {:?} directly (fast path).",
+            drawable,
+            renderbuffer,
+        );
+        // re-borrow
+        let gles = super::sync_context(&mut env.framework_state.opengles, &mut env.objc, env.window.as_mut().unwrap(), env.current_thread);
+        unsafe {
+            present_renderbuffer(gles, env.window.as_mut().unwrap());
+        }
+    } else {
+        if fullscreen_layer != nil {
+            // If there's a single layer that covers the screen, and this isn't
+            // it, there's no point in presenting the output because it won't be
+            // seen. Using a noisy log because it's a weird scenario and might
+            // indicate a bug.
+            log!(
+                "Layer {:?} is not the fullscreen layer {:?}, skipping presentation of renderbuffer {:?}!",
                 drawable,
                 renderbuffer,
             );

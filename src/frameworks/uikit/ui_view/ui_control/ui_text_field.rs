@@ -13,6 +13,10 @@ use sdl2_sys::{SDL_StartTextInput, SDL_StopTextInput};
 use crate::frameworks::core_graphics::CGRect;
 use crate::frameworks::foundation::{ns_string, NSInteger, NSRange, NSUInteger};
 use crate::frameworks::uikit::ui_font::UITextAlignmentLeft;
+use crate::frameworks::uikit::ui_view::ui_window::{
+    UIKeyboardDidHideNotification, UIKeyboardDidShowNotification, UIKeyboardWillHideNotification,
+    UIKeyboardWillShowNotification,
+};
 use crate::impl_HostObject_with_superclass;
 use crate::objc::{
     id, msg, msg_class, msg_super, nil, objc_classes, release, ClassExports, NSZonePtr, SEL,
@@ -192,6 +196,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setBorderStyle:(NSInteger)style {
     log!("TODO: setBorderStyle:{}", style);
 }
+- (())setEnablesReturnKeyAutomatically:(bool)enables {
+    log!("TODO: setEnablesReturnKeyAutomatically:{}", enables);
+}
 
 - (())touchesBegan:(id)_touches // NSSet* of UITouch*
          withEvent:(id)_event { // UIEvent*
@@ -229,8 +236,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; text_label setText:empty];
     }
 
+    let center: id = msg_class![env; NSNotificationCenter defaultCenter];
+    let name = ns_string::get_static_str(env, UIKeyboardWillShowNotification);
+    // TODO: userInfo
+    let _: () = msg![env; center postNotificationName:name object:this userInfo:nil];
+
     env.framework_state.uikit.ui_responder.first_responder = this;
     unsafe { SDL_StartTextInput(); }
+
+    let name = ns_string::get_static_str(env, UIKeyboardDidShowNotification);
+    // TODO: userInfo
+    let _: () = msg![env; center postNotificationName:name object:this userInfo:nil];
 
     // TODO: is it the right spot?
     env.objc.borrow_mut::<UITextFieldHostObject>(this).editing = true;
@@ -257,8 +273,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         return false;
     }
 
+    let center: id = msg_class![env; NSNotificationCenter defaultCenter];
+    let name = ns_string::get_static_str(env, UIKeyboardWillHideNotification);
+    // TODO: userInfo
+    let _: () = msg![env; center postNotificationName:name object:this userInfo:nil];
+
     env.framework_state.uikit.ui_responder.first_responder = nil;
     unsafe { SDL_StopTextInput(); }
+
+    let name = ns_string::get_static_str(env, UIKeyboardDidHideNotification);
+    // TODO: userInfo
+    let _: () = msg![env; center postNotificationName:name object:this userInfo:nil];
 
     // TODO: is it the right spot?
     env.objc.borrow_mut::<UITextFieldHostObject>(this).editing = false;
